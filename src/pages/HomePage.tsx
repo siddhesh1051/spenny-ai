@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Plus } from "lucide-react";
+import { Mic, Plus, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,7 @@ export function HomePage({
   handleMicClick,
   clearAllExpenses,
   getStructuredExpenses,
+  handleExpenseImage,
 }: {
   expenses: Expense[];
   isRecording: boolean;
@@ -60,6 +61,7 @@ export function HomePage({
   handleMicClick: () => void;
   clearAllExpenses: () => void;
   getStructuredExpenses: (text: string) => Promise<void>;
+  handleExpenseImage: (file: File) => void;
 }) {
   const [textInput, setTextInput] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -77,10 +79,21 @@ export function HomePage({
     }
   };
 
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleExpenseImage(file);
+    }
+    event.target.value = ""; // Reset file input
+  };
+
   return (
     <div>
       <div className="flex flex-col items-center justify-center h-[50vh]">
-        <div className="flex flex-col items-center gap-4">
+        <h2 className="text-2xl font-bold mb-4">
+          Click the mic or button to start
+        </h2>
+        <div className="flex items-center gap-8">
           <div className="relative w-40 h-40 flex items-center justify-center">
             {isRecording && (
               <div className="absolute w-full h-full rounded-full bg-gradient-to-r from-cyan-400 via-purple-600 to-pink-600 animate-spin-slow blur-xl"></div>
@@ -98,7 +111,7 @@ export function HomePage({
                 }}
               ></div>
               <div className="relative z-10">
-                {isLoading ? (
+                {isLoading && isRecording ? (
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
                 ) : (
                   <Mic className="h-12 w-12" />
@@ -106,14 +119,17 @@ export function HomePage({
               </div>
             </button>
           </div>
+        </div>
+        <div className="flex items-center gap-4">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button
                 variant="outline"
                 size="lg"
                 className="rounded-full shadow-lg transition-transform transform hover:scale-105"
+                disabled={isLoading}
               >
-                <Plus className="h-12 w-12" /> Add Manually
+                Add Manually <Plus className="h-4 w-4 ml-2" />
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -136,6 +152,29 @@ export function HomePage({
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <Button
+            variant="outline"
+            size="lg"
+            className="rounded-full shadow-lg transition-transform transform hover:scale-105"
+            disabled={isLoading}
+          >
+            <label htmlFor="image-upload" className="flex items-center">
+              Upload Screenshot
+              {isLoading && !isRecording ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary ml-2"></div>
+              ) : (
+                <Upload className="h-4 w-4 ml-2" />
+              )}
+            </label>
+            <input
+              id="image-upload"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageUpload}
+              disabled={isLoading}
+            />
+          </Button>
         </div>
       </div>
 

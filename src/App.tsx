@@ -9,11 +9,18 @@ import { AnalyticsPage } from "@/pages/AnalyticsPage";
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
+interface Expense {
+  amount: number;
+  category: string;
+  description: string;
+  date: string;
+}
+
 function App() {
-  const [expenses, setExpenses] = useState([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -34,8 +41,12 @@ function App() {
     }
   }, [expenses]);
 
-  const addExpenses = (newExpenses) => {
-    setExpenses((prevExpenses) => [...prevExpenses, ...newExpenses]);
+  const addExpenses = (newExpenses: Omit<Expense, "date">[]) => {
+    const expensesWithDate = newExpenses.map((e) => ({
+      ...e,
+      date: new Date().toISOString(),
+    }));
+    setExpenses((prevExpenses) => [...prevExpenses, ...expensesWithDate]);
   };
 
   const clearAllExpenses = () => {
@@ -43,9 +54,10 @@ function App() {
   };
 
   const handleMicClick = () => {
-    if (
-      !("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
-    ) {
+    // @ts-ignore
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
       setError("Speech recognition is not supported in this browser.");
       return;
     }
@@ -55,8 +67,7 @@ function App() {
       return;
     }
 
-    const recognition = new (window.SpeechRecognition ||
-      window.webkitSpeechRecognition)();
+    const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
@@ -69,7 +80,7 @@ function App() {
       setIsRecording(false);
     };
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       const speechResult = event.results[0][0].transcript;
       getStructuredExpenses(speechResult);
     };
@@ -77,7 +88,7 @@ function App() {
     recognition.start();
   };
 
-  const getStructuredExpenses = async (text) => {
+  const getStructuredExpenses = async (text: string) => {
     if (!GEMINI_API_KEY) {
       setError("Gemini API key is not set.");
       return;
@@ -113,12 +124,7 @@ function App() {
           .replace(/```json/g, "")
           .replace(/```/g, "");
         const structuredExpenses = JSON.parse(cleanedJson);
-        addExpenses(
-          structuredExpenses.map((e) => ({
-            ...e,
-            date: new Date().toISOString(),
-          }))
-        );
+        addExpenses(structuredExpenses);
       } else {
         setError("Could not extract expenses from the provided text.");
       }
@@ -127,6 +133,71 @@ function App() {
       console.error("Error getting structured expenses:", error);
     }
     setIsLoading(false);
+  };
+
+  const getStructuredExpensesFromImage = async (
+    base64Image: string,
+    mimeType: string
+  ) => {
+    if (!GEMINI_API_KEY) {
+      setError("Gemini API key is not set.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: "You are an AI that extracts structured expense data from an image of an order history. From the attached image, return a JSON array of {amount, category, description}. Make sure the category is one of the following: food, travel, groceries, entertainment, utilities, rent, other.",
+                  },
+                  {
+                    inlineData: {
+                      mimeType: mimeType,
+                      data: base64Image,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (data.candidates && data.candidates.length > 0) {
+        const responseText = data.candidates[0].content.parts[0].text;
+        const cleanedJson = responseText
+          .replace(/```json/g, "")
+          .replace(/```/g, "");
+        const structuredExpenses = JSON.parse(cleanedJson);
+        addExpenses(structuredExpenses);
+      } else {
+        setError("Could not extract expenses from the image.");
+      }
+    } catch (error) {
+      setError("Error getting structured expenses from image.");
+      console.error("Error getting structured expenses from image:", error);
+    }
+    setIsLoading(false);
+  };
+
+  const handleExpenseImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result?.toString().split(",")[1];
+      if (base64String) {
+        getStructuredExpensesFromImage(base64String, file.type);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -156,6 +227,7 @@ function App() {
                 handleMicClick={handleMicClick}
                 clearAllExpenses={clearAllExpenses}
                 getStructuredExpenses={getStructuredExpenses}
+                handleExpenseImage={handleExpenseImage}
               />
             }
           />
