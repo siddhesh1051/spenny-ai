@@ -1,8 +1,14 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2 } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { Button } from "./ui/button";
 
-export function Sidebar() {
+export function Sidebar({ user }: { user: any }) {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
   return (
     <div className="flex flex-col h-full bg-card border-r text-card-foreground p-2">
       <div className="p-4 mb-8 mt-2">
@@ -41,16 +47,34 @@ export function Sidebar() {
           <BarChart2 className="mr-3 h-5 w-5" />
           Analytics
         </NavLink>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `flex items-center px-4 py-2 rounded-lg ${
+              isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+            }`
+          }
+        >
+          <Settings className="mr-3 h-5 w-5" />
+          Settings
+        </NavLink>
       </nav>
-      <div className="p-4 flex items-center gap-2">
-        <Avatar className="w-5 h-5">
-          <AvatarImage
-            src="https://i.pravatar.cc/150?u=a042581f4e29026704d"
-            alt="Janice Chandler"
-          />
-          <AvatarFallback>JC</AvatarFallback>
-        </Avatar>
-        <p className="font-semibold text-sm">Janice Chandler</p>
+      <div className="p-4 mt-auto">
+        <div className="flex items-center gap-2 mb-4">
+          <Avatar className="w-5 h-5">
+            <AvatarImage
+              src={user?.user_metadata?.avatar_url}
+              alt={user?.user_metadata?.full_name || user?.email}
+            />
+            <AvatarFallback>{user?.email?.[0]?.toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <p className="font-semibold text-sm">
+            {user?.user_metadata?.full_name || user?.email}
+          </p>
+        </div>
+        <Button onClick={handleLogout} className="w-full" variant="outline">
+          <LogOut className="mr-2 h-4 w-4" /> Logout
+        </Button>
       </div>
     </div>
   );

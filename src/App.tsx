@@ -1,13 +1,15 @@
+import type { Session } from "@supabase/supabase-js";
 import { useState, useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { supabase } from "./lib/supabase";
+import AuthPage from "./pages/AuthPage";
+import { Routes, Route, useNavigate } from "react-router-dom";
+import { HomePage } from "./pages/HomePage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
+import SettingsPage from "./pages/SettingsPage";
+import { Sidebar } from "./components/sidebar";
+import { ModeToggle } from "./components/mode-toggle";
+import { Button } from "./components/ui/button";
 import { X } from "lucide-react";
-import { ModeToggle } from "@/components/mode-toggle";
-import { Sidebar } from "@/components/sidebar";
-import { HomePage } from "@/pages/HomePage";
-import { AnalyticsPage } from "@/pages/AnalyticsPage";
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 interface Expense {
   amount: number;
@@ -17,29 +19,58 @@ interface Expense {
 }
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) {
+        navigate("/");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const storedExpenses = localStorage.getItem("expenses");
-      if (storedExpenses) {
-        setExpenses(JSON.parse(storedExpenses));
+    if (session) {
+      try {
+        const storedExpenses = localStorage.getItem(
+          `expenses_${session.user.id}`
+        );
+        if (storedExpenses) {
+          setExpenses(JSON.parse(storedExpenses));
+        }
+      } catch (error) {
+        console.error("Error parsing expenses from local storage:", error);
       }
-    } catch (error) {
-      console.error("Error parsing expenses from local storage:", error);
     }
-  }, []);
+  }, [session]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem("expenses", JSON.stringify(expenses));
-    } catch (error) {
-      console.error("Error saving expenses to local storage:", error);
+    if (session) {
+      try {
+        localStorage.setItem(
+          `expenses_${session.user.id}`,
+          JSON.stringify(expenses)
+        );
+      } catch (error) {
+        console.error("Error saving expenses to local storage:", error);
+      }
     }
-  }, [expenses]);
+  }, [expenses, session]);
 
   const addExpenses = (newExpenses: Omit<Expense, "date">[]) => {
     const expensesWithDate = newExpenses.map((e) => ({
@@ -52,6 +83,8 @@ function App() {
   const clearAllExpenses = () => {
     setExpenses([]);
   };
+
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
   const handleMicClick = () => {
     // @ts-ignore
@@ -200,12 +233,19 @@ function App() {
     reader.readAsDataURL(file);
   };
 
+  if (!session) {
+    return <AuthPage />;
+  }
+
+  const userName =
+    session.user?.user_metadata?.full_name || session.user?.email;
+
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <Sidebar />
+      <Sidebar user={session.user} />
       <main className="flex-1 p-8 overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold">Welcome Back, Janice!</h1>
+          <h1 className="text-2xl font-bold">Welcome Back, {userName}!</h1>
           <ModeToggle />
         </div>
         {error && (
@@ -235,6 +275,7 @@ function App() {
             path="/analytics"
             element={<AnalyticsPage expenses={expenses} />}
           />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
     </div>
