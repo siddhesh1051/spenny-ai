@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Plus, Upload } from "lucide-react";
+import { Mic, Plus, Upload, Edit, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 
 const categories: { [key: string]: string } = {
   food: "🍔",
@@ -40,6 +41,7 @@ const categories: { [key: string]: string } = {
 };
 
 interface Expense {
+  id: string;
   amount: number;
   category: string;
   description: string;
@@ -54,6 +56,8 @@ export function HomePage({
   clearAllExpenses,
   getStructuredExpenses,
   handleExpenseImage,
+  deleteExpense,
+  updateExpense,
 }: {
   expenses: Expense[];
   isRecording: boolean;
@@ -62,9 +66,13 @@ export function HomePage({
   clearAllExpenses: () => void;
   getStructuredExpenses: (text: string) => Promise<void>;
   handleExpenseImage: (file: File) => void;
+  deleteExpense: (id: string) => Promise<void>;
+  updateExpense: (id: string, updatedFields: Partial<Expense>) => Promise<void>;
 }) {
   const [textInput, setTextInput] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   const totalExpense = expenses.reduce(
     (total, expense) => total + expense.amount,
@@ -75,7 +83,7 @@ export function HomePage({
     if (textInput.trim()) {
       await getStructuredExpenses(textInput);
       setTextInput("");
-      setIsDialogOpen(false);
+      setIsAddDialogOpen(false);
     }
   };
 
@@ -85,6 +93,22 @@ export function HomePage({
       handleExpenseImage(file);
     }
     event.target.value = ""; // Reset file input
+  };
+
+  const handleEditClick = (expense: Expense) => {
+    setEditingExpense({ ...expense });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateExpense = async () => {
+    if (!editingExpense) return;
+    await updateExpense(editingExpense.id, {
+      amount: editingExpense.amount,
+      category: editingExpense.category,
+      description: editingExpense.description,
+    });
+    setIsEditDialogOpen(false);
+    setEditingExpense(null);
   };
 
   return (
@@ -121,7 +145,7 @@ export function HomePage({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button
                 variant="outline"
@@ -210,11 +234,12 @@ export function HomePage({
                     <TableHead>Category</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expenses.map((expense, index) => (
-                    <TableRow key={index}>
+                  {expenses.map((expense) => (
+                    <TableRow key={expense.id}>
                       <TableCell>{expense.description}</TableCell>
                       <TableCell>
                         <span className="mr-2">
@@ -227,6 +252,22 @@ export function HomePage({
                       </TableCell>
                       <TableCell className="text-right">
                         ₹{expense.amount.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(expense)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteExpense(expense.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -241,6 +282,69 @@ export function HomePage({
           </CardFooter>
         )}
       </Card>
+      {editingExpense && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Expense</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="description" className="text-right">
+                  Description
+                </label>
+                <Input
+                  id="description"
+                  value={editingExpense.description}
+                  onChange={(e) =>
+                    setEditingExpense({
+                      ...editingExpense,
+                      description: e.target.value,
+                    })
+                  }
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="amount" className="text-right">
+                  Amount
+                </label>
+                <Input
+                  id="amount"
+                  type="number"
+                  value={editingExpense.amount}
+                  onChange={(e) =>
+                    setEditingExpense({
+                      ...editingExpense,
+                      amount: Number(e.target.value),
+                    })
+                  }
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="category" className="text-right">
+                  Category
+                </label>
+                <Input
+                  id="category"
+                  value={editingExpense.category}
+                  onChange={(e) =>
+                    setEditingExpense({
+                      ...editingExpense,
+                      category: e.target.value,
+                    })
+                  }
+                  className="col-span-3"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={handleUpdateExpense}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

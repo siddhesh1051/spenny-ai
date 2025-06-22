@@ -12,6 +12,7 @@ import { Button } from "./components/ui/button";
 import { X } from "lucide-react";
 
 interface Expense {
+  id: string;
   amount: number;
   category: string;
   description: string;
@@ -44,44 +45,85 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchExpenses = async () => {
+    if (!session) return;
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from("expenses")
+        .select("*")
+        .order("date", { ascending: false });
+      if (error) throw error;
+      setExpenses(data || []);
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (session) {
-      try {
-        const storedExpenses = localStorage.getItem(
-          `expenses_${session.user.id}`
-        );
-        if (storedExpenses) {
-          setExpenses(JSON.parse(storedExpenses));
-        }
-      } catch (error) {
-        console.error("Error parsing expenses from local storage:", error);
-      }
+      fetchExpenses();
     }
   }, [session]);
 
-  useEffect(() => {
-    if (session) {
-      try {
-        localStorage.setItem(
-          `expenses_${session.user.id}`,
-          JSON.stringify(expenses)
-        );
-      } catch (error) {
-        console.error("Error saving expenses to local storage:", error);
-      }
+  const addExpenses = async (newExpenses: Omit<Expense, "id" | "date">[]) => {
+    if (!session) return;
+    try {
+      const expensesWithDateAndUser = newExpenses.map((e) => ({
+        ...e,
+        date: new Date().toISOString(),
+        user_id: session.user.id,
+      }));
+      const { data, error } = await supabase
+        .from("expenses")
+        .insert(expensesWithDateAndUser)
+        .select();
+      if (error) throw error;
+      setExpenses((prevExpenses) => [...data, ...prevExpenses]);
+    } catch (error: any) {
+      setError(error.message);
     }
-  }, [expenses, session]);
-
-  const addExpenses = (newExpenses: Omit<Expense, "date">[]) => {
-    const expensesWithDate = newExpenses.map((e) => ({
-      ...e,
-      date: new Date().toISOString(),
-    }));
-    setExpenses((prevExpenses) => [...prevExpenses, ...expensesWithDate]);
   };
 
-  const clearAllExpenses = () => {
-    setExpenses([]);
+  const deleteExpense = async (id: string) => {
+    try {
+      const { error } = await supabase.from("expenses").delete().eq("id", id);
+      if (error) throw error;
+      setExpenses(expenses.filter((e) => e.id !== id));
+    } catch (error: any) {
+      setError(error.message);
+    }
+  };
+
+  const updateExpense = async (id: string, updatedFields: Partial<Expense>) => {
+    try {
+      const { data, error } = await supabase
+        .from("expenses")
+        .update(updatedFields)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      setExpenses(expenses.map((e) => (e.id === id ? data : e)));
+    } catch (error: any) {
+      setError(error.message);
+    }
+  };
+
+  const clearAllExpenses = async () => {
+    if (!session) return;
+    try {
+      const { error } = await supabase
+        .from("expenses")
+        .delete()
+        .eq("user_id", session.user.id);
+      if (error) throw error;
+      setExpenses([]);
+    } catch (error: any) {
+      setError(error.message);
+    }
   };
 
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -268,6 +310,8 @@ function App() {
                 clearAllExpenses={clearAllExpenses}
                 getStructuredExpenses={getStructuredExpenses}
                 handleExpenseImage={handleExpenseImage}
+                deleteExpense={deleteExpense}
+                updateExpense={updateExpense}
               />
             }
           />
