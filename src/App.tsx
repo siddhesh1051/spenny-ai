@@ -153,8 +153,6 @@ function App() {
     }
   };
 
-  const GEMINI_API_KEY = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
-
   const handleMicClick = () => {
     // @ts-ignore
     const SpeechRecognition =

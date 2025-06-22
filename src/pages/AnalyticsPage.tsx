@@ -215,7 +215,7 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
                       nameKey="name"
                       isAnimationActive={true}
                     >
-                      {expenseDataForPieChart.map((entry, index) => (
+                      {expenseDataForPieChart.map((_entry, index) => (
                         <Cell
                           key={`cell-${index}`}
                           fill={COLORS[index % COLORS.length]}
