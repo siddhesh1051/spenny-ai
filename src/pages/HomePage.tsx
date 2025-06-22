@@ -113,19 +113,19 @@ export function HomePage({
 
   return (
     <div>
-      <div className="flex flex-col items-center justify-center h-[50vh]">
-        <h2 className="text-2xl font-bold mb-4">
+      <div className="flex flex-col items-center justify-center h-auto md:h-[50vh] py-12 md:py-0">
+        <h2 className="text-xl md:text-2xl font-bold mb-4 text-center">
           Click the mic or button to start
         </h2>
-        <div className="flex items-center gap-8">
-          <div className="relative w-40 h-40 flex items-center justify-center">
+        <div className="flex items-center gap-4 md:gap-8">
+          <div className="relative w-28 h-28 md:w-40 md:h-40 flex items-center justify-center">
             {isRecording && (
               <div className="absolute w-full h-full rounded-full bg-gradient-to-r from-cyan-400 via-purple-600 to-pink-600 animate-spin-slow blur-xl"></div>
             )}
             <button
               onClick={handleMicClick}
               disabled={isLoading}
-              className="relative w-32 h-32 bg-[#1a0a30] rounded-full flex items-center justify-center text-white shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50"
+              className="relative w-24 h-24 md:w-32 md:h-32 bg-[#1a0a30] rounded-full flex items-center justify-center text-white shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50"
             >
               <div
                 className="absolute w-full h-full rounded-full"
@@ -144,7 +144,7 @@ export function HomePage({
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col md:flex-row items-center gap-4 mt-4">
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button
@@ -221,58 +221,102 @@ export function HomePage({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-72">
+          <ScrollArea className="h-72 w-full">
             {expenses.length === 0 ? (
               <p className="text-center text-muted-foreground">
                 No expenses yet. Click the mic or button to add some.
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Mobile View - Card List */}
+                <div className="md:hidden space-y-4">
                   {expenses.map((expense) => (
-                    <TableRow key={expense.id}>
-                      <TableCell>{expense.description}</TableCell>
-                      <TableCell>
-                        <span className="mr-2">
-                          {categories[expense.category] || "🤷"}
-                        </span>
-                        {expense.category}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(expense.date).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        ₹{expense.amount.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditClick(expense)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteExpense(expense.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                    <Card key={expense.id} className="px-4 py-3 gap-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold">{expense.description}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {expense.category}
+                          </p>
+                        </div>
+                        <p className="font-bold">
+                          ₹{expense.amount.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex justify-between items-center mt-2">
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(expense.date).toLocaleDateString()}
+                        </p>
+                        <div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditClick(expense)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteExpense(expense.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+                {/* Desktop View - Table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {expenses.map((expense) => (
+                        <TableRow key={expense.id}>
+                          <TableCell>{expense.description}</TableCell>
+                          <TableCell>
+                            <span className="mr-2">
+                              {categories[expense.category] || "🤷"}
+                            </span>
+                            {expense.category}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(expense.date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            ₹{expense.amount.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditClick(expense)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteExpense(expense.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </ScrollArea>
         </CardContent>

@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
 
 export default function AuthPage() {
   const [email, setEmail] = useState("");
@@ -33,8 +34,7 @@ export default function AuthPage() {
     try {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
-      // The user will be redirected by the AuthProvider, after confirming email
-      alert("Check your email for the confirmation link!");
+      toast.success("Check your email for the confirmation link!");
     } catch (error: any) {
       setError(error.message);
     } finally {

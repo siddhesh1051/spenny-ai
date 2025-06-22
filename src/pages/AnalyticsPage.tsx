@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ResponsiveContainer,
   XAxis,
@@ -7,12 +9,60 @@ import {
   PieChart as RechartsPieChart,
   Pie,
   Cell,
-  CartesianGrid,
   BarChart,
   Bar,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { useTheme } from "@/components/theme-provider";
+
+const COLORS = [
+  "#0088FE",
+  "#00C49F",
+  "#FFBB28",
+  "#FF8042",
+  "#AF19FF",
+  "#FF1919",
+];
+
+interface TooltipPayload {
+  name: string;
+  value: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayload[];
+  label?: string;
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="p-2 bg-background border border-border rounded-lg shadow-lg">
+        <p className="label font-bold">{`${label || payload[0].name}`}</p>
+        <p className="intro text-primary">{`₹${payload[0].value.toFixed(
+          2
+        )}`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+const CustomBarTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="p-2 bg-background border border-border rounded-lg shadow-lg">
+        <p className="label font-bold">{`${label}`}</p>
+        <p className="intro text-primary">{`Amount: ₹${payload[0].value.toFixed(
+          2
+        )}`}</p>
+      </div>
+    );
+  }
+  return null;
+};
 
 interface Expense {
   amount: number;
@@ -22,6 +72,9 @@ interface Expense {
 }
 
 export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
+  const { theme } = useTheme();
+  const tickColor = theme === "dark" ? "#FFFFFF" : "#000000";
+
   const totalExpense = expenses.reduce(
     (acc, expense) => acc + expense.amount,
     0
@@ -78,20 +131,24 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-6">Analytics Dashboard</h1>
+      <h1 className="text-2xl md:text-3xl font-bold mb-6">
+        Analytics Dashboard
+      </h1>
       {expenses.length === 0 ? (
         <p className="text-center text-muted-foreground">
           No data to display. Add some expenses first.
         </p>
       ) : (
-        <div className="grid gap-6">
-          <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-4 md:gap-6">
+          <div className="grid gap-4 md:gap-6 md:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>Total Expenses</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">₹{totalExpense.toFixed(2)}</p>
+                <p className="text-2xl md:text-3xl font-bold">
+                  ₹{totalExpense.toFixed(2)}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -99,7 +156,7 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
                 <CardTitle>Average Daily Spend</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">
+                <p className="text-2xl md:text-3xl font-bold">
                   ₹{averageDailySpend.toFixed(2)}
                 </p>
               </CardContent>
@@ -109,7 +166,9 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
                 <CardTitle>Total Transactions</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{totalTransactions}</p>
+                <p className="text-2xl md:text-3xl font-bold">
+                  {totalTransactions}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -135,7 +194,7 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Expenses by Category</CardTitle>
@@ -148,31 +207,24 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      outerRadius={80}
+                      outerRadius={100}
+                      innerRadius={60}
+                      paddingAngle={5}
                       fill="#8884d8"
                       dataKey="value"
                       nameKey="name"
+                      isAnimationActive={true}
                     >
                       {expenseDataForPieChart.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={
-                            [
-                              "#0088FE",
-                              "#00C49F",
-                              "#FFBB28",
-                              "#FF8042",
-                              "#AF19FF",
-                              "#FF1919",
-                            ][index % 6]
-                          }
+                          fill={COLORS[index % COLORS.length]}
+                          stroke={COLORS[index % COLORS.length]}
                         />
                       ))}
                     </Pie>
-                    <Tooltip
-                      formatter={(value: number) => `₹${value.toFixed(2)}`}
-                    />
-                    <Legend />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend iconType="circle" />
                   </RechartsPieChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -183,15 +235,42 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={expenseDataForBarChart}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip
-                      formatter={(value: number) => `₹${value.toFixed(2)}`}
+                  <BarChart
+                    data={expenseDataForBarChart}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+                        <stop
+                          offset="5%"
+                          stopColor="#8884d8"
+                          stopOpacity={0.8}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#8884d8"
+                          stopOpacity={0}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fill: tickColor }}
+                      tickLine={{ stroke: tickColor }}
                     />
-                    <Legend />
-                    <Bar dataKey="amount" fill="#8884d8" />
+                    <YAxis
+                      tick={{ fill: tickColor }}
+                      tickLine={{ stroke: tickColor }}
+                    />
+                    <Tooltip
+                      content={<CustomBarTooltip />}
+                      cursor={{ fill: "hsla(var(--muted), 0.5)" }}
+                    />
+                    <Bar
+                      dataKey="amount"
+                      fill="url(#colorUv)"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

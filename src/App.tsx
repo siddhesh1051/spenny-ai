@@ -9,7 +9,8 @@ import SettingsPage from "./pages/SettingsPage";
 import { Sidebar } from "./components/sidebar";
 import { ModeToggle } from "./components/mode-toggle";
 import { Button } from "./components/ui/button";
-import { X } from "lucide-react";
+import { X, Menu } from "lucide-react";
+import { Toaster } from "@/components/ui/sonner";
 
 interface Expense {
   id: string;
@@ -21,19 +22,45 @@ interface Expense {
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [userGeminiKey, setUserGeminiKey] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const getSessionAndProfile = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       setSession(session);
-    });
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("gemini_api_key")
+          .eq("id", session.user.id)
+          .single();
+        setUserGeminiKey(profile?.gemini_api_key || null);
+      }
+    };
+    getSessionAndProfile();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (!session) {
+      if (session) {
+        // Fetch profile again on auth change, e.g. login
+        const getProfile = async () => {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("gemini_api_key")
+            .eq("id", session.user.id)
+            .single();
+          setUserGeminiKey(profile?.gemini_api_key || null);
+        };
+        getProfile();
+      } else {
         navigate("/");
+        setUserGeminiKey(null);
       }
     });
 
@@ -126,7 +153,7 @@ function App() {
     }
   };
 
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  const GEMINI_API_KEY = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
 
   const handleMicClick = () => {
     // @ts-ignore
@@ -164,7 +191,8 @@ function App() {
   };
 
   const getStructuredExpenses = async (text: string) => {
-    if (!GEMINI_API_KEY) {
+    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
       setError("Gemini API key is not set.");
       return;
     }
@@ -172,7 +200,7 @@ function App() {
     setError(null);
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: {
@@ -214,7 +242,8 @@ function App() {
     base64Image: string,
     mimeType: string
   ) => {
-    if (!GEMINI_API_KEY) {
+    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
       setError("Gemini API key is not set.");
       return;
     }
@@ -222,7 +251,7 @@ function App() {
     setError(null);
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -284,12 +313,31 @@ function App() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <Sidebar user={session.user} />
-      <main className="flex-1 p-8 overflow-y-auto">
+      <div className="md:flex">
+        <Sidebar
+          user={session.user}
+          isOpen={isSidebarOpen}
+          setIsOpen={setIsSidebarOpen}
+        />
+      </div>
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold">Welcome Back, {userName}!</h1>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            >
+              <Menu className="h-6 w-6" />
+            </Button>
+            <h1 className="text-lg md:text-2xl font-bold">
+              Welcome Back, {userName}!
+            </h1>
+          </div>
           <ModeToggle />
         </div>
+        <Toaster />
         {error && (
           <div className="bg-red-500 text-white p-4 rounded-md mb-4 flex justify-between items-center">
             {error}
