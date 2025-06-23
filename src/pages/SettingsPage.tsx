@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import type { User } from "@supabase/supabase-js";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -93,7 +94,20 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-32 mb-2" />
+          <Skeleton className="h-4 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-32" />
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 const categories: { [key: string]: string } = {
   food: "🍔",
@@ -222,7 +223,55 @@ export function HomePage({
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-72 w-full">
-            {expenses.length === 0 ? (
+            {isLoading ? (
+              <>
+                {/* Mobile View - Skeleton Card List */}
+                <div className="md:hidden space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <Card key={i} className="px-4 py-3 gap-2">
+                      <Skeleton className="h-4 w-1/2 mb-2" />
+                      <Skeleton className="h-3 w-1/4 mb-2" />
+                      <Skeleton className="h-4 w-1/3" />
+                    </Card>
+                  ))}
+                </div>
+                {/* Desktop View - Skeleton Table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...Array(5)].map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            <Skeleton className="h-4 w-24" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-16" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-20" />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Skeleton className="h-4 w-12" />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Skeleton className="h-4 w-16" />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            ) : expenses.length === 0 ? (
               <p className="text-center text-muted-foreground">
                 No expenses yet. Click the mic or button to add some.
               </p>

@@ -363,7 +363,9 @@ function App() {
           />
           <Route
             path="/analytics"
-            element={<AnalyticsPage expenses={expenses} />}
+            element={
+              <AnalyticsPage expenses={expenses} isLoading={isLoading} />
+            }
           />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

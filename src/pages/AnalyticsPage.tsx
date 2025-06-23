@@ -15,6 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useTheme } from "@/components/theme-provider";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 const COLORS = [
   "#0088FE",
@@ -71,7 +72,13 @@ interface Expense {
   date: string;
 }
 
-export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
+export function AnalyticsPage({
+  expenses,
+  isLoading,
+}: {
+  expenses: Expense[];
+  isLoading: boolean;
+}) {
   const { theme } = useTheme();
   const tickColor = theme === "dark" ? "#FFFFFF" : "#000000";
 
@@ -135,9 +142,50 @@ export function AnalyticsPage({ expenses }: { expenses: Expense[] }) {
         Analytics Dashboard
       </h1>
       {expenses.length === 0 ? (
-        <p className="text-center text-muted-foreground">
-          No data to display. Add some expenses first.
-        </p>
+        isLoading ? (
+          <div className="grid gap-4 md:gap-6">
+            <div className="grid gap-4 md:gap-6 md:grid-cols-3">
+              {[...Array(3)].map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-6 w-32 mb-2" />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-8 w-24" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-48 mb-2" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-4 w-full" />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
+              {[...Array(2)].map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-6 w-40 mb-2" />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-40 w-full" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-center text-muted-foreground">
+            No data to display. Add some expenses first.
+          </p>
+        )
       ) : (
         <div className="grid gap-4 md:gap-6">
           <div className="grid gap-4 md:gap-6 md:grid-cols-3">
