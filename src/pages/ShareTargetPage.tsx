@@ -1,9 +1,19 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-export default function ShareTargetPage() {
+// Define a type for launchParams
+interface LaunchParams {
+  files?: File[];
+  title?: string;
+  text?: string;
+}
+
+const ShareTargetPage: React.FC = () => {
   const [status, setStatus] = useState("Processing shared image...");
   const [error, setError] = useState<string | null>(null);
+  const [sharedImage, setSharedImage] = useState<string | null>(null);
+  const [sharedTitle, setSharedTitle] = useState<string | null>(null);
+  const [sharedText, setSharedText] = useState<string | null>(null);
 
   // Reusable file processing logic
   async function processSharedFile(file: File) {
@@ -101,58 +111,22 @@ export default function ShareTargetPage() {
   }
 
   useEffect(() => {
-    // Existing launchQueue logic
-    async function handleShare() {
-      if (window.location.pathname !== "/share-target") return;
-      if ("launchQueue" in window) {
-        // @ts-expect-error launchQueue is not typed in TypeScript, but is available in some browsers for PWA share target support
-        window.launchQueue.setConsumer(
-          async (launchParams: { files?: { file: File }[] }) => {
-            if (!launchParams.files || launchParams.files.length === 0) {
-              setError("No image received.");
-              setStatus("");
-              return;
+    // launchQueue is not yet typed in TypeScript
+    if ("launchQueue" in window) {
+      // @ts-expect-error: launchQueue is not yet typed in TypeScript
+      window.launchQueue.setConsumer((launchParams: LaunchParams) => {
+        if (launchParams.files && launchParams.files.length > 0) {
+          for (const fileHandle of launchParams.files) {
+            if (fileHandle.type && fileHandle.type.startsWith("image/")) {
+              const url = URL.createObjectURL(fileHandle);
+              setSharedImage(url);
             }
-            const file = launchParams.files[0].file;
-            if (!file.type.startsWith("image/")) {
-              setError("Shared file is not an image.");
-              setStatus("");
-              return;
-            }
-            await processSharedFile(file);
           }
-        );
-      }
+        }
+        setSharedTitle(launchParams.title || null);
+        setSharedText(launchParams.text || null);
+      });
     }
-    handleShare();
-
-    // webcontentshared event listener
-    function handleWebContentShared(
-      e: CustomEvent<{
-        file?: File;
-        url?: string;
-        title?: string;
-        text?: string;
-      }>
-    ) {
-      if (e.detail?.file) {
-        processSharedFile(e.detail.file);
-      } else if (e.detail?.url) {
-        setStatus("Received a shared link: " + e.detail.url);
-      } else {
-        setStatus("Received shared text: " + (e.detail?.text || ""));
-      }
-    }
-    window.addEventListener(
-      "webcontentshared",
-      handleWebContentShared as EventListener
-    );
-    return () => {
-      window.removeEventListener(
-        "webcontentshared",
-        handleWebContentShared as EventListener
-      );
-    };
   }, []);
 
   return (
@@ -160,9 +134,19 @@ export default function ShareTargetPage() {
       <h1 className="text-2xl font-bold mb-4">Share to Spenny AI</h1>
       {status && <p className="mb-2 text-green-400">{status}</p>}
       {error && <p className="mb-2 text-red-500">{error}</p>}
+      {sharedTitle && <h2 className="text-xl font-bold mb-2">{sharedTitle}</h2>}
+      {sharedText && <p className="mb-2">{sharedText}</p>}
+      {sharedImage && (
+        <img src={sharedImage} alt="Shared" className="max-w-[300px] mb-4" />
+      )}
+      {!sharedImage && (
+        <p className="text-xs text-zinc-400">No image shared.</p>
+      )}
       <p className="text-xs text-zinc-400">
         You can close this window when done.
       </p>
     </div>
   );
-}
+};
+
+export default ShareTargetPage;
