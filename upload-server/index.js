@@ -32,6 +32,8 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+    console.log("fileName", fileName);
+
     const { publicURL } = supabase.storage
       .from(process.env.SUPABASE_BUCKET)
       .getPublicUrl(fileName);
