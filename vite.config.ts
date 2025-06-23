@@ -4,7 +4,6 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
@@ -37,6 +36,22 @@ export default defineConfig({
             purpose: "maskable",
           },
         ],
+        // Add your share_target here
+        share_target: {
+          action: "/share-target",
+          method: "POST",
+          enctype: "multipart/form-data",
+          params: {
+            files: [
+              {
+                name: "image",
+                accept: ["image/*"],
+              },
+            ],
+            title: "title",
+            text: "text",
+          },
+        },
       },
     }),
   ],
