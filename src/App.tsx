@@ -12,6 +12,7 @@ import { Button } from "./components/ui/button";
 import { X, Menu } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+import ShareTargetPage from "./pages/ShareTargetPage";
 
 interface Expense {
   id: string;
@@ -371,6 +372,7 @@ function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/share-target" element={<ShareTargetPage />} />
           </Routes>
         </main>
       </div>
