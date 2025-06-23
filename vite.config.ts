@@ -45,4 +45,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    allowedHosts: [
+      "fe1e-103-215-237-92.ngrok-free.app",
+      "localhost",
+      "127.0.0.1",
+      "https://spennyai.vercel.app/",
+    ],
+  },
 });
