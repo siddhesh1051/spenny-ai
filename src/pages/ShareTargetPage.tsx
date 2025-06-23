@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 
-const UPLOAD_SERVER_URL = "http://localhost:5000/upload"; // Change to your deployed server URL
+const UPLOAD_SERVER_URL = "https://spenny-ai.onrender.com/upload"; // Change to your deployed server URL
 
 const ShareTargetPage: React.FC = () => {
   const [sharedImage, setSharedImage] = useState<string | null>(null);
