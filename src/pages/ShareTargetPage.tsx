@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 // Define a type for launchParams
 interface LaunchParams {
@@ -9,106 +8,9 @@ interface LaunchParams {
 }
 
 const ShareTargetPage: React.FC = () => {
-  const [status, setStatus] = useState("Processing shared image...");
-  const [error, setError] = useState<string | null>(null);
   const [sharedImage, setSharedImage] = useState<string | null>(null);
   const [sharedTitle, setSharedTitle] = useState<string | null>(null);
   const [sharedText, setSharedText] = useState<string | null>(null);
-
-  // Reusable file processing logic
-  async function processSharedFile(file: File) {
-    setStatus("Uploading shared file...");
-    const filePath = `screenshots/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage
-      .from("screenshots")
-      .upload(filePath, file);
-    if (uploadError) {
-      setError("Failed to upload image: " + uploadError.message);
-      setStatus("");
-      return;
-    }
-    setStatus("Image uploaded! Processing...");
-    // Fetch the uploaded image as base64
-    const { data: downloadData, error: downloadError } = await supabase.storage
-      .from("screenshots")
-      .download(filePath);
-    if (downloadError || !downloadData) {
-      setError("Failed to download uploaded image for processing.");
-      setStatus("");
-      return;
-    }
-    const blob = downloadData;
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64String = reader.result?.toString().split(",")[1];
-      if (!base64String) {
-        setError("Failed to read image as base64.");
-        setStatus("");
-        return;
-      }
-      setStatus("Processing image with AI...");
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        setError("Gemini API key is not set.");
-        setStatus("");
-        return;
-      }
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: "You are an AI that extracts structured expense data from an image of an order history. From the attached image, return a JSON array of {amount, category, description}. Make sure the category is one of the following: food, travel, groceries, entertainment, utilities, rent, other.",
-                    },
-                    {
-                      inlineData: {
-                        mimeType: file.type,
-                        data: base64String,
-                      },
-                    },
-                  ],
-                },
-              ],
-            }),
-          }
-        );
-        const data = await response.json();
-        if (data.candidates && data.candidates.length > 0) {
-          const responseText = data.candidates[0].content.parts[0].text;
-          const cleanedJson = responseText
-            .replace(/```json/g, "")
-            .replace(/```/g, "");
-          const structuredExpenses = JSON.parse(cleanedJson);
-          const expensesWithDate = structuredExpenses.map((e: any) => ({
-            ...e,
-            date: new Date().toISOString(),
-          }));
-          const { error: insertError } = await supabase
-            .from("expenses")
-            .insert(expensesWithDate);
-          if (insertError) {
-            setError("Failed to save expenses: " + insertError.message);
-            setStatus("");
-            return;
-          }
-          setStatus("Expenses extracted and saved! You can close this window.");
-        } else {
-          setError("Could not extract expenses from the image.");
-          setStatus("");
-        }
-      } catch (err) {
-        setError("Error processing image with AI.");
-        setStatus("");
-      }
-    };
-    reader.readAsDataURL(blob);
-  }
 
   useEffect(() => {
     // launchQueue is not yet typed in TypeScript
@@ -130,21 +32,14 @@ const ShareTargetPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white">
-      <h1 className="text-2xl font-bold mb-4">Share to Spenny AI</h1>
-      {status && <p className="mb-2 text-green-400">{status}</p>}
-      {error && <p className="mb-2 text-red-500">{error}</p>}
-      {sharedTitle && <h2 className="text-xl font-bold mb-2">{sharedTitle}</h2>}
-      {sharedText && <p className="mb-2">{sharedText}</p>}
+    <div style={{ padding: 24 }}>
+      <h1>Shared to Spenny AI</h1>
+      {sharedTitle && <h2>{sharedTitle}</h2>}
+      {sharedText && <p>{sharedText}</p>}
       {sharedImage && (
-        <img src={sharedImage} alt="Shared" className="max-w-[300px] mb-4" />
+        <img src={sharedImage} alt="Shared" style={{ maxWidth: 300 }} />
       )}
-      {!sharedImage && (
-        <p className="text-xs text-zinc-400">No image shared.</p>
-      )}
-      <p className="text-xs text-zinc-400">
-        You can close this window when done.
-      </p>
+      {!sharedImage && <p>No image shared.</p>}
     </div>
   );
 };
