@@ -49,3 +49,10 @@ body {
   font-weight: 300;
   font-style: normal;
 }
+
+@media (max-width: 600px) {
+  #root {
+    max-width: 100vw;
+    padding: 0.5rem;
+  }
+}
