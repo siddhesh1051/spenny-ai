@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 // Define a type for launchParams
 interface LaunchParams {
@@ -14,9 +15,25 @@ const ShareTargetPage: React.FC = () => {
   const [sharedTitle, setSharedTitle] = useState<string | null>(null);
   const [sharedText, setSharedText] = useState<string | null>(null);
   const [noImage, setNoImage] = useState<boolean>(false);
+  const location = useLocation();
 
   useEffect(() => {
-    // launchQueue is not yet typed in TypeScript
+    // Try to read from query params first
+    const params = new URLSearchParams(location.search);
+    const imageBase64 = params.get("image");
+    const mime = params.get("mime") || "image/png";
+    const title = params.get("title");
+    const text = params.get("text");
+    if (imageBase64) {
+      setSharedImage(`data:${mime};base64,${imageBase64}`);
+      setImageName("Shared Image");
+      setImageSize(Math.round((imageBase64.length * 3) / 4));
+      setSharedTitle(title);
+      setSharedText(text);
+      setNoImage(false);
+      return;
+    }
+    // Fallback to launchQueue for local/dev
     if ("launchQueue" in window) {
       // @ts-expect-error: launchQueue is not yet typed in TypeScript
       window.launchQueue.setConsumer((launchParams: LaunchParams) => {
@@ -38,7 +55,7 @@ const ShareTargetPage: React.FC = () => {
         setNoImage(!foundImage);
       });
     }
-  }, []);
+  }, [location.search]);
 
   return (
     <div style={{ padding: 24 }}>
