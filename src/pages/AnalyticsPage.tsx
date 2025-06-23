@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useTheme } from "@/components/theme-provider";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useEffect, useState } from "react";
 
 const COLORS = [
   "#0088FE",
@@ -81,6 +82,14 @@ export function AnalyticsPage({
 }) {
   const { theme } = useTheme();
   const tickColor = theme === "dark" ? "#FFFFFF" : "#000000";
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 600);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const totalExpense = expenses.reduce(
     (acc, expense) => acc + expense.amount,
@@ -135,6 +144,11 @@ export function AnalyticsPage({
       amount,
     }))
     .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+
+  // Limit bar chart data for mobile to last 6 months
+  const limitedBarChartData = isMobile
+    ? expenseDataForBarChart.slice(-6)
+    : expenseDataForBarChart;
 
   return (
     <div>
@@ -282,10 +296,14 @@ export function AnalyticsPage({
                 <CardTitle>Monthly Spending Trend</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={isMobile ? 200 : 300}>
                   <BarChart
-                    data={expenseDataForBarChart}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    data={limitedBarChartData}
+                    margin={
+                      isMobile
+                        ? { top: 10, right: 0, left: 0, bottom: 5 }
+                        : { top: 16, right: 24, left: 12, bottom: 5 }
+                    }
                   >
                     <defs>
                       <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
@@ -309,6 +327,7 @@ export function AnalyticsPage({
                     <YAxis
                       tick={{ fill: tickColor }}
                       tickLine={{ stroke: tickColor }}
+                      className="text-[11px]"
                     />
                     <Tooltip
                       content={<CustomBarTooltip />}
