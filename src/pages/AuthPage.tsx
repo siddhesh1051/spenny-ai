@@ -96,8 +96,8 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="flex items-center justify-center h-screen bg-black">
-      <Card className="w-full max-w-sm bg-zinc-900 border-zinc-700 text-white">
+    <div className="flex items-center justify-center min-h-screen bg-black px-2 sm:px-0">
+      <Card className="w-full max-w-sm bg-zinc-900 border-zinc-700 text-white shadow-lg sm:rounded-xl sm:mx-0 mx-2">
         <CardHeader>
           <CardTitle>Welcome</CardTitle>
         </CardHeader>
