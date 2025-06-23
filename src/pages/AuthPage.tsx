@@ -16,6 +16,7 @@ const AuthForm = ({
   isSubmitting,
   error,
   handleAuthAction,
+  signUpConfirmationMessage,
 }: {
   action: "signIn" | "signUp";
   email: string;
@@ -25,6 +26,7 @@ const AuthForm = ({
   isSubmitting: boolean;
   error: string | null;
   handleAuthAction: (action: "signIn" | "signUp") => void;
+  signUpConfirmationMessage?: string | null;
 }) => (
   <div className="space-y-4 pt-4">
     <Input
@@ -53,6 +55,11 @@ const AuthForm = ({
         ? "Sign In"
         : "Sign Up"}
     </Button>
+    {action === "signUp" && signUpConfirmationMessage && (
+      <p className="text-green-500 text-sm text-center">
+        {signUpConfirmationMessage}
+      </p>
+    )}
   </div>
 );
 
@@ -61,10 +68,14 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signUpConfirmationMessage, setSignUpConfirmationMessage] = useState<
+    string | null
+  >(null);
 
   const handleAuthAction = async (action: "signIn" | "signUp") => {
     setIsSubmitting(true);
     setError(null);
+    if (action === "signUp") setSignUpConfirmationMessage(null);
     try {
       const { error } =
         action === "signIn"
@@ -72,6 +83,9 @@ export default function AuthPage() {
           : await supabase.auth.signUp({ email, password });
       if (error) throw error;
       if (action === "signUp") {
+        setSignUpConfirmationMessage(
+          "Check your email for the confirmation link!"
+        );
         toast.success("Check your email for the confirmation link!");
       }
     } catch (error: any) {
@@ -132,6 +146,7 @@ export default function AuthPage() {
                   isSubmitting={isSubmitting}
                   error={error}
                   handleAuthAction={handleAuthAction}
+                  signUpConfirmationMessage={signUpConfirmationMessage}
                 />
               </TabsContent>
             </Tabs>

@@ -123,7 +123,10 @@ export function Sidebar({
                   </Avatar>
                   <div className="flex flex-col items-start">
                     <p className="font-semibold text-sm">{userName}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p
+                      className="text-xs text-muted-foreground max-w-[160px] truncate"
+                      title={user?.email}
+                    >
                       {user?.email}
                     </p>
                   </div>
@@ -134,7 +137,10 @@ export function Sidebar({
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{userName}</p>
-                  <p className="text-xs leading-none text-muted-foreground">
+                  <p
+                    className="text-xs leading-none text-muted-foreground max-w-[180px] truncate"
+                    title={user?.email}
+                  >
                     {user?.email}
                   </p>
                 </div>
