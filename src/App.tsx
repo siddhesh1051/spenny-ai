@@ -11,6 +11,7 @@ import { ModeToggle } from "./components/mode-toggle";
 import { Button } from "./components/ui/button";
 import { X, Menu } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 
 interface Expense {
   id: string;
@@ -310,67 +311,70 @@ function App() {
     session.user?.user_metadata?.full_name || session.user?.email;
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <div className="md:flex">
-        <Sidebar
-          user={session.user}
-          isOpen={isSidebarOpen}
-          setIsOpen={setIsSidebarOpen}
-        />
-      </div>
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            >
-              <Menu className="h-6 w-6" />
-            </Button>
-            <h1 className="text-lg md:text-2xl font-bold">
-              Welcome Back, {userName}!
-            </h1>
-          </div>
-          <ModeToggle />
+    <>
+      <PWAInstallPrompt />
+      <div className="flex h-screen bg-background text-foreground">
+        <div className="md:flex">
+          <Sidebar
+            user={session.user}
+            isOpen={isSidebarOpen}
+            setIsOpen={setIsSidebarOpen}
+          />
         </div>
-        <Toaster />
-        {error && (
-          <div className="bg-red-500 text-white p-4 rounded-md mb-4 flex justify-between items-center">
-            {error}
-            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-              <X className="h-4 w-4" />
-            </Button>
+        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              >
+                <Menu className="h-6 w-6" />
+              </Button>
+              <h1 className="text-lg md:text-2xl font-bold">
+                Welcome Back, {userName}!
+              </h1>
+            </div>
+            <ModeToggle />
           </div>
-        )}
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <HomePage
-                expenses={expenses}
-                isRecording={isRecording}
-                isLoading={isLoading}
-                handleMicClick={handleMicClick}
-                clearAllExpenses={clearAllExpenses}
-                getStructuredExpenses={getStructuredExpenses}
-                handleExpenseImage={handleExpenseImage}
-                deleteExpense={deleteExpense}
-                updateExpense={updateExpense}
-              />
-            }
-          />
-          <Route
-            path="/analytics"
-            element={
-              <AnalyticsPage expenses={expenses} isLoading={isLoading} />
-            }
-          />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </main>
-    </div>
+          <Toaster />
+          {error && (
+            <div className="bg-red-500 text-white p-4 rounded-md mb-4 flex justify-between items-center">
+              {error}
+              <Button variant="ghost" size="sm" onClick={() => setError(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <HomePage
+                  expenses={expenses}
+                  isRecording={isRecording}
+                  isLoading={isLoading}
+                  handleMicClick={handleMicClick}
+                  clearAllExpenses={clearAllExpenses}
+                  getStructuredExpenses={getStructuredExpenses}
+                  handleExpenseImage={handleExpenseImage}
+                  deleteExpense={deleteExpense}
+                  updateExpense={updateExpense}
+                />
+              }
+            />
+            <Route
+              path="/analytics"
+              element={
+                <AnalyticsPage expenses={expenses} isLoading={isLoading} />
+              }
+            />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </main>
+      </div>
+    </>
   );
 }
 
