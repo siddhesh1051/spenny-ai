@@ -4,7 +4,14 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const bucket = process.env.SUPABASE_BUCKET;
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+export const config = {
+  api: {
+    bodyParser: false, // Disables default body parsing so busboy can handle it
+  },
+};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,10 +26,14 @@ export default async function handler(req, res) {
   let title = "";
   let text = "";
 
-  bb.on("file", (name, file, info) => {
-    fileName = info.filename || `shared-${Date.now()}`;
-    fileMime = info.mimeType || "image/png";
-    file.on("data", (data) => fileBuffer.push(data));
+  let filePromise = new Promise((resolve, reject) => {
+    bb.on("file", (name, file, info) => {
+      fileName = info.filename || `shared-${Date.now()}`;
+      fileMime = info.mimeType || "image/png";
+      file.on("data", (data) => fileBuffer.push(data));
+      file.on("end", () => resolve());
+      file.on("error", reject);
+    });
   });
 
   bb.on("field", (name, val) => {
@@ -30,31 +41,32 @@ export default async function handler(req, res) {
     if (name === "text") text = val;
   });
 
-  bb.on("close", async () => {
+  req.pipe(bb);
+
+  bb.on("finish", async () => {
+    await filePromise; // Ensure file is fully buffered
     const buffer = Buffer.concat(fileBuffer);
+    if (!buffer.length) {
+      res.status(400).send("No file uploaded");
+      return;
+    }
     const storagePath = `shared/${Date.now()}-${fileName}`;
-    // Upload to Supabase Storage (bucket: shared-images)
-    const { data, error } = await supabase.storage
-      .from("shared-images")
+    const { error } = await supabase.storage
+      .from(bucket)
       .upload(storagePath, buffer, { contentType: fileMime, upsert: true });
 
     if (error) {
-      res.status(500).send("Failed to upload image");
+      res.status(500).send("Failed to upload image: " + error.message);
       return;
     }
 
-    // Get public URL
     const { publicURL } = supabase.storage
-      .from("shared-images")
+      .from(bucket)
       .getPublicUrl(storagePath);
-
-    // Redirect to SPA with image URL
     const url = `/share-target?url=${encodeURIComponent(
       publicURL
     )}&title=${encodeURIComponent(title)}&text=${encodeURIComponent(text)}`;
     res.writeHead(302, { Location: url });
     res.end();
   });
-
-  req.pipe(bb);
 }
