@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2, Settings, LogOut } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut, Share } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
@@ -105,6 +105,20 @@ export function Sidebar({
           >
             <Settings className="mr-3 h-5 w-5" />
             Settings
+          </NavLink>
+          <NavLink
+            to="/share-target"
+            className={({ isActive }) =>
+              `flex items-center px-4 py-2 rounded-lg ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`
+            }
+            onClick={handleLinkClick}
+          >
+            <Share className="mr-3 h-5 w-5" />
+            Share Image
           </NavLink>
         </nav>
         <div className="p-4 mt-auto">
