@@ -44,7 +44,7 @@ export default defineConfig({
           params: {
             files: [
               {
-                name: "image",
+                name: "files",
                 accept: [".jpg", ".jpeg", ".png", ".gif", ".webp"],
               },
             ],
