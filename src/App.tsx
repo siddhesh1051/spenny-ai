@@ -74,10 +74,66 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Enhanced service worker registration and debugging
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      const registerSW = async () => {
+        try {
+          // Unregister any existing service workers first
+          const registrations =
+            await navigator.serviceWorker.getRegistrations();
+          for (let registration of registrations) {
+            console.log("🗑️ Unregistering old SW:", registration);
+            await registration.unregister();
+          }
+
+          // Clear all caches
+          const cacheNames = await caches.keys();
+          for (let cacheName of cacheNames) {
+            console.log("🗑️ Deleting cache:", cacheName);
+            await caches.delete(cacheName);
+          }
+
+          // Register new service worker
+          console.log("🔧 Registering new service worker...");
+          const registration = await navigator.serviceWorker.register(
+            "/sw.js",
+            {
+              scope: "/",
+            }
+          );
+
+          console.log("✅ SW registered successfully:", registration);
+
+          // Wait for it to be ready
+          await navigator.serviceWorker.ready;
+          console.log("✅ SW is ready");
+
+          // Test communication
+          if (navigator.serviceWorker.controller) {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = (event) => {
+              console.log("🏓 SW responded:", event.data);
+            };
+            navigator.serviceWorker.controller.postMessage({ type: "PING" }, [
+              channel.port2,
+            ]);
+          }
+        } catch (error) {
+          console.error("❌ SW registration failed:", error);
+        }
+      };
+
+      registerSW();
+    } else {
+      console.error("❌ Service Workers not supported");
+    }
+  }, []);
+
   // Handle shared images from service worker
   useEffect(() => {
     const handleServiceWorkerMessage = async (event: MessageEvent) => {
-      console.log("App received SW message:", event.data);
+      console.log("📨 App received SW message:", event.data);
 
       if (event.data.type === "SHARED_IMAGE") {
         toast.success("Image shared! Processing expense data...");
@@ -87,9 +143,12 @@ function App() {
           const channel = new MessageChannel();
 
           channel.port1.onmessage = (event) => {
+            console.log("📁 Received file response:", event.data);
             const { success, file, error } = event.data;
 
             if (success && file) {
+              console.log("✅ File received, processing...");
+
               // Convert blob to File object
               const sharedFile = new File(
                 [file],
@@ -99,24 +158,36 @@ function App() {
                 }
               );
 
+              console.log(
+                "📷 Processing file with Gemini:",
+                sharedFile.name,
+                sharedFile.type
+              );
+
               // Process the image using existing function
               handleExpenseImage(sharedFile);
             } else {
-              console.error("Failed to get shared file:", error);
+              console.error("❌ Failed to get shared file:", error);
               toast.error("Failed to process shared image");
             }
           };
 
           // Request the file
-          navigator.serviceWorker.controller?.postMessage(
-            {
-              type: "GET_SHARED_FILE",
-              shareId: event.data.shareId,
-            },
-            [channel.port2]
-          );
+          if (navigator.serviceWorker.controller) {
+            console.log("📤 Requesting file from SW...");
+            navigator.serviceWorker.controller.postMessage(
+              {
+                type: "GET_SHARED_FILE",
+                shareId: event.data.shareId,
+              },
+              [channel.port2]
+            );
+          } else {
+            console.error("❌ No SW controller available");
+            toast.error("Service worker not available");
+          }
         } catch (error) {
-          console.error("Error processing shared image:", error);
+          console.error("❌ Error processing shared image:", error);
           toast.error("Failed to process shared image");
         }
       }
@@ -137,10 +208,17 @@ function App() {
     }
   }, [session]);
 
-  // Check for share success/error params
+  // Check for share success/error params with detailed logging
   useEffect(() => {
+    console.log(
+      "🔍 Checking URL params:",
+      Object.fromEntries(searchParams.entries())
+    );
+
     if (searchParams.get("shared") === "true") {
-      console.log("Share detected in URL params");
+      console.log("✅ Share detected in URL params");
+      toast.info("Share detected, waiting for image processing...");
+
       // Clean up URL immediately
       const newSearchParams = new URLSearchParams(searchParams);
       newSearchParams.delete("shared");
@@ -149,6 +227,8 @@ function App() {
 
     const errorParam = searchParams.get("error");
     if (errorParam) {
+      console.log("❌ Error in URL params:", errorParam);
+
       let errorMessage = "Failed to process shared image";
       switch (errorParam) {
         case "invalid-file":
@@ -159,6 +239,9 @@ function App() {
           break;
         case "share-failed":
           errorMessage = "Failed to process shared image.";
+          break;
+        case "cache-failed":
+          errorMessage = "Failed to store shared image.";
           break;
       }
 
@@ -195,6 +278,8 @@ function App() {
   const addExpenses = async (newExpenses: Omit<Expense, "id" | "date">[]) => {
     if (!session) return;
     try {
+      console.log("💾 Adding expenses to database:", newExpenses);
+
       const expensesWithDateAndUser = newExpenses.map((e) => ({
         ...e,
         date: new Date().toISOString(),
@@ -207,7 +292,9 @@ function App() {
       if (error) throw error;
       setExpenses((prevExpenses) => [...data, ...prevExpenses]);
       toast.success(`Added ${data.length} expense(s) from shared image!`);
+      console.log("✅ Expenses added successfully:", data);
     } catch (error: any) {
+      console.error("❌ Failed to add expenses:", error);
       setError(error.message);
       toast.error("Failed to save expenses");
     }
@@ -347,6 +434,8 @@ function App() {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("🤖 Calling Gemini API for image analysis...");
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
         {
@@ -373,47 +462,53 @@ function App() {
       );
 
       const data = await response.json();
+      console.log("🤖 Gemini API response:", data);
+
       if (data.candidates && data.candidates.length > 0) {
         const responseText = data.candidates[0].content.parts[0].text;
+        console.log("📄 Raw response text:", responseText);
+
         const cleanedJson = responseText
           .replace(/```json/g, "")
           .replace(/```/g, "");
+        console.log("🧹 Cleaned JSON:", cleanedJson);
+
         const structuredExpenses = JSON.parse(cleanedJson);
+        console.log("📊 Parsed expenses:", structuredExpenses);
+
         addExpenses(structuredExpenses);
       } else {
+        console.log("❌ No candidates in Gemini response");
         setError("Could not extract expenses from the image.");
       }
     } catch (error) {
+      console.error("❌ Error in Gemini API call:", error);
       setError("Error getting structured expenses from image.");
-      console.error("Error getting structured expenses from image:", error);
     }
     setIsLoading(false);
   };
 
   const handleExpenseImage = (file: File) => {
+    console.log(
+      "📷 Processing expense image:",
+      file.name,
+      file.type,
+      file.size
+    );
+
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64String = reader.result?.toString().split(",")[1];
       if (base64String) {
+        console.log("📷 Image converted to base64, sending to Gemini...");
         getStructuredExpensesFromImage(base64String, file.type);
+      } else {
+        console.error("❌ Failed to convert image to base64");
+        toast.error("Failed to process image");
       }
     };
     reader.readAsDataURL(file);
   };
-
-  // Register service worker
-  useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then((registration) => {
-          console.log("SW registered successfully:", registration);
-        })
-        .catch((registrationError) => {
-          console.error("SW registration failed:", registrationError);
-        });
-    }
-  }, []);
 
   if (!session) {
     return <AuthPage />;
