@@ -38,7 +38,7 @@ export default defineConfig({
         ],
         // Add your share_target here
         share_target: {
-          action: "/upload",
+          action: "/share-target",
           method: "POST",
           enctype: "multipart/form-data",
           params: {

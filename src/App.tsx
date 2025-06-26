@@ -2,7 +2,7 @@ import type { Session } from "@supabase/supabase-js";
 import { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import AuthPage from "./pages/AuthPage";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -12,8 +12,7 @@ import { Button } from "./components/ui/button";
 import { X, Menu } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
-import ShareTargetPage from "./pages/ShareTargetPage";
-import ShareTargetHandler from "./pages/ShareTargetHandler";
+import { toast } from "sonner";
 
 interface Expense {
   id: string;
@@ -27,6 +26,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [userGeminiKey, setUserGeminiKey] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -51,7 +51,6 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
-        // Fetch profile again on auth change, e.g. login
         const getProfile = async () => {
           const { data: profile } = await supabase
             .from("profiles")
@@ -74,6 +73,79 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Handle shared images from service worker
+  useEffect(() => {
+    const handleServiceWorkerMessage = async (event: MessageEvent) => {
+      if (event.data.type === "SHARED_IMAGE") {
+        toast.success("Image shared! Processing expense data...");
+
+        try {
+          // Get the shared file from cache
+          const cache = await caches.open("shared-images");
+          const keys = await cache.keys();
+          const latestFileKey = keys
+            .filter((key) => key.url.includes("shared-file-"))
+            .sort((a, b) => {
+              const timestampA = parseInt(a.url.split("-").pop() || "0");
+              const timestampB = parseInt(b.url.split("-").pop() || "0");
+              return timestampB - timestampA;
+            })[0];
+
+          if (latestFileKey) {
+            const fileResponse = await cache.match(latestFileKey);
+            if (fileResponse) {
+              const blob = await fileResponse.blob();
+              const file = new File([blob], event.data.data.name, {
+                type: event.data.data.type,
+              });
+
+              // Process the image using existing function
+              handleExpenseImage(file);
+
+              // Clean up cache
+              await cache.delete(latestFileKey);
+            }
+          }
+        } catch (error) {
+          console.error("Error processing shared image:", error);
+          toast.error("Failed to process shared image");
+        }
+      }
+    };
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener(
+        "message",
+        handleServiceWorkerMessage
+      );
+
+      return () => {
+        navigator.serviceWorker.removeEventListener(
+          "message",
+          handleServiceWorkerMessage
+        );
+      };
+    }
+  }, [session]);
+
+  // Check for share success/error params
+  useEffect(() => {
+    if (searchParams.get("shared") === "true") {
+      toast.success("Image received! Processing...");
+      // Clean up URL
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete("shared");
+      navigate({ search: newSearchParams.toString() }, { replace: true });
+    }
+
+    if (searchParams.get("error") === "share-failed") {
+      toast.error("Failed to process shared image");
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete("error");
+      navigate({ search: newSearchParams.toString() }, { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   const fetchExpenses = async () => {
     if (!session) return;
@@ -112,8 +184,10 @@ function App() {
         .select();
       if (error) throw error;
       setExpenses((prevExpenses) => [...data, ...prevExpenses]);
+      toast.success(`Added ${data.length} expense(s) from shared image!`);
     } catch (error: any) {
       setError(error.message);
+      toast.error("Failed to save expenses");
     }
   };
 
@@ -261,7 +335,7 @@ function App() {
               {
                 parts: [
                   {
-                    text: "You are an AI that extracts structured expense data from an image of an order history. From the attached image, return a JSON array of {amount, category, description}. Make sure the category is one of the following: food, travel, groceries, entertainment, utilities, rent, other.",
+                    text: "You are an AI that extracts structured expense data from an image of an order history, receipt, or bill. From the attached image, return a JSON array of {amount, category, description}. Make sure the category is one of the following: food, travel, groceries, entertainment, utilities, rent, other. Extract all visible expenses/items from the image.",
                   },
                   {
                     inlineData: {
@@ -304,6 +378,22 @@ function App() {
     };
     reader.readAsDataURL(file);
   };
+
+  // Register service worker
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/sw.js")
+          .then((registration) => {
+            console.log("SW registered: ", registration);
+          })
+          .catch((registrationError) => {
+            console.log("SW registration failed: ", registrationError);
+          });
+      });
+    }
+  }, []);
 
   if (!session) {
     return <AuthPage />;
@@ -373,8 +463,6 @@ function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/share-target" element={<ShareTargetPage />} />
-            <Route path="/upload" element={<ShareTargetHandler />} />
           </Routes>
         </main>
       </div>
