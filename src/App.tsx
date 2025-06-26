@@ -77,36 +77,44 @@ function App() {
   // Handle shared images from service worker
   useEffect(() => {
     const handleServiceWorkerMessage = async (event: MessageEvent) => {
+      console.log("App received SW message:", event.data);
+
       if (event.data.type === "SHARED_IMAGE") {
         toast.success("Image shared! Processing expense data...");
 
         try {
-          // Get the shared file from cache
-          const cache = await caches.open("shared-images");
-          const keys = await cache.keys();
-          const latestFileKey = keys
-            .filter((key) => key.url.includes("shared-file-"))
-            .sort((a, b) => {
-              const timestampA = parseInt(a.url.split("-").pop() || "0");
-              const timestampB = parseInt(b.url.split("-").pop() || "0");
-              return timestampB - timestampA;
-            })[0];
+          // Request the file from service worker
+          const channel = new MessageChannel();
 
-          if (latestFileKey) {
-            const fileResponse = await cache.match(latestFileKey);
-            if (fileResponse) {
-              const blob = await fileResponse.blob();
-              const file = new File([blob], event.data.data.name, {
-                type: event.data.data.type,
-              });
+          channel.port1.onmessage = (event) => {
+            const { success, file, error } = event.data;
+
+            if (success && file) {
+              // Convert blob to File object
+              const sharedFile = new File(
+                [file],
+                event.data.metadata?.name || "shared-image.jpg",
+                {
+                  type: event.data.metadata?.type || "image/jpeg",
+                }
+              );
 
               // Process the image using existing function
-              handleExpenseImage(file);
-
-              // Clean up cache
-              await cache.delete(latestFileKey);
+              handleExpenseImage(sharedFile);
+            } else {
+              console.error("Failed to get shared file:", error);
+              toast.error("Failed to process shared image");
             }
-          }
+          };
+
+          // Request the file
+          navigator.serviceWorker.controller?.postMessage(
+            {
+              type: "GET_SHARED_FILE",
+              shareId: event.data.shareId,
+            },
+            [channel.port2]
+          );
         } catch (error) {
           console.error("Error processing shared image:", error);
           toast.error("Failed to process shared image");
@@ -132,15 +140,29 @@ function App() {
   // Check for share success/error params
   useEffect(() => {
     if (searchParams.get("shared") === "true") {
-      toast.success("Image received! Processing...");
-      // Clean up URL
+      console.log("Share detected in URL params");
+      // Clean up URL immediately
       const newSearchParams = new URLSearchParams(searchParams);
       newSearchParams.delete("shared");
       navigate({ search: newSearchParams.toString() }, { replace: true });
     }
 
-    if (searchParams.get("error") === "share-failed") {
-      toast.error("Failed to process shared image");
+    const errorParam = searchParams.get("error");
+    if (errorParam) {
+      let errorMessage = "Failed to process shared image";
+      switch (errorParam) {
+        case "invalid-file":
+          errorMessage = "Invalid file type. Please share an image file.";
+          break;
+        case "no-file":
+          errorMessage = "No file was shared.";
+          break;
+        case "share-failed":
+          errorMessage = "Failed to process shared image.";
+          break;
+      }
+
+      toast.error(errorMessage);
       const newSearchParams = new URLSearchParams(searchParams);
       newSearchParams.delete("error");
       navigate({ search: newSearchParams.toString() }, { replace: true });
@@ -382,16 +404,14 @@ function App() {
   // Register service worker
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker
-          .register("/sw.js")
-          .then((registration) => {
-            console.log("SW registered: ", registration);
-          })
-          .catch((registrationError) => {
-            console.log("SW registration failed: ", registrationError);
-          });
-      });
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then((registration) => {
+          console.log("SW registered successfully:", registration);
+        })
+        .catch((registrationError) => {
+          console.error("SW registration failed:", registrationError);
+        });
     }
   }, []);
 
