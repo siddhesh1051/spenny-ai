@@ -6,6 +6,7 @@ import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
+import ShareTargetPage from "./pages/ShareTargetPage";
 import { Sidebar } from "./components/sidebar";
 import { ModeToggle } from "./components/mode-toggle";
 import { Button } from "./components/ui/button";
@@ -74,180 +75,49 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Enhanced service worker registration and debugging
+  // Handle share results and notifications
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      const registerSW = async () => {
-        try {
-          // Unregister any existing service workers first
-          const registrations =
-            await navigator.serviceWorker.getRegistrations();
-          for (let registration of registrations) {
-            console.log("🗑️ Unregistering old SW:", registration);
-            await registration.unregister();
-          }
+    const shareResult = searchParams.get("shared");
+    const errorParam = searchParams.get("error");
+    const infoParam = searchParams.get("info");
 
-          // Clear all caches
-          const cacheNames = await caches.keys();
-          for (let cacheName of cacheNames) {
-            console.log("🗑️ Deleting cache:", cacheName);
-            await caches.delete(cacheName);
-          }
-
-          // Register new service worker
-          console.log("🔧 Registering new service worker...");
-          const registration = await navigator.serviceWorker.register(
-            "/sw.js",
-            {
-              scope: "/",
-            }
-          );
-
-          console.log("✅ SW registered successfully:", registration);
-
-          // Wait for it to be ready
-          await navigator.serviceWorker.ready;
-          console.log("✅ SW is ready");
-
-          // Test communication
-          if (navigator.serviceWorker.controller) {
-            const channel = new MessageChannel();
-            channel.port1.onmessage = (event) => {
-              console.log("🏓 SW responded:", event.data);
-            };
-            navigator.serviceWorker.controller.postMessage({ type: "PING" }, [
-              channel.port2,
-            ]);
-          }
-        } catch (error) {
-          console.error("❌ SW registration failed:", error);
-        }
-      };
-
-      registerSW();
-    } else {
-      console.error("❌ Service Workers not supported");
-    }
-  }, []);
-
-  // Handle shared images from service worker
-  useEffect(() => {
-    const handleServiceWorkerMessage = async (event: MessageEvent) => {
-      console.log("📨 App received SW message:", event.data);
-
-      if (event.data.type === "SHARED_IMAGE") {
-        toast.success("Image shared! Processing expense data...");
-
-        try {
-          // Request the file from service worker
-          const channel = new MessageChannel();
-
-          channel.port1.onmessage = (event) => {
-            console.log("📁 Received file response:", event.data);
-            const { success, file, error } = event.data;
-
-            if (success && file) {
-              console.log("✅ File received, processing...");
-
-              // Convert blob to File object
-              const sharedFile = new File(
-                [file],
-                event.data.metadata?.name || "shared-image.jpg",
-                {
-                  type: event.data.metadata?.type || "image/jpeg",
-                }
-              );
-
-              console.log(
-                "📷 Processing file with Gemini:",
-                sharedFile.name,
-                sharedFile.type
-              );
-
-              // Process the image using existing function
-              handleExpenseImage(sharedFile);
-            } else {
-              console.error("❌ Failed to get shared file:", error);
-              toast.error("Failed to process shared image");
-            }
-          };
-
-          // Request the file
-          if (navigator.serviceWorker.controller) {
-            console.log("📤 Requesting file from SW...");
-            navigator.serviceWorker.controller.postMessage(
-              {
-                type: "GET_SHARED_FILE",
-                shareId: event.data.shareId,
-              },
-              [channel.port2]
-            );
-          } else {
-            console.error("❌ No SW controller available");
-            toast.error("Service worker not available");
-          }
-        } catch (error) {
-          console.error("❌ Error processing shared image:", error);
-          toast.error("Failed to process shared image");
-        }
-      }
-    };
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener(
-        "message",
-        handleServiceWorkerMessage
-      );
-
-      return () => {
-        navigator.serviceWorker.removeEventListener(
-          "message",
-          handleServiceWorkerMessage
-        );
-      };
-    }
-  }, [session]);
-
-  // Check for share success/error params with detailed logging
-  useEffect(() => {
-    console.log(
-      "🔍 Checking URL params:",
-      Object.fromEntries(searchParams.entries())
-    );
-
-    if (searchParams.get("shared") === "true") {
-      console.log("✅ Share detected in URL params");
-      toast.info("Share detected, waiting for image processing...");
-
-      // Clean up URL immediately
+    if (shareResult === "success") {
+      toast.success("Image processed! Expenses extracted and saved.");
+      // Clean up URL
       const newSearchParams = new URLSearchParams(searchParams);
       newSearchParams.delete("shared");
       navigate({ search: newSearchParams.toString() }, { replace: true });
     }
 
-    const errorParam = searchParams.get("error");
     if (errorParam) {
-      console.log("❌ Error in URL params:", errorParam);
-
-      let errorMessage = "Failed to process shared image";
+      let errorMessage = "Failed to process shared content";
       switch (errorParam) {
         case "invalid-file":
           errorMessage = "Invalid file type. Please share an image file.";
           break;
         case "no-file":
-          errorMessage = "No file was shared.";
+          errorMessage = "No image file was shared.";
+          break;
+        case "no-content":
+          errorMessage = "No shared content detected.";
           break;
         case "share-failed":
-          errorMessage = "Failed to process shared image.";
-          break;
-        case "cache-failed":
-          errorMessage = "Failed to store shared image.";
+          errorMessage = "Failed to process shared content.";
           break;
       }
 
       toast.error(errorMessage);
       const newSearchParams = new URLSearchParams(searchParams);
       newSearchParams.delete("error");
+      navigate({ search: newSearchParams.toString() }, { replace: true });
+    }
+
+    if (infoParam === "text-received") {
+      toast.info(
+        "Text content received, but we need an image to extract expenses."
+      );
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete("info");
       navigate({ search: newSearchParams.toString() }, { replace: true });
     }
   }, [searchParams, navigate]);
@@ -578,6 +448,10 @@ function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route
+              path="/share-target"
+              element={<ShareTargetPage onImageReceived={handleExpenseImage} />}
+            />
           </Routes>
         </main>
       </div>
