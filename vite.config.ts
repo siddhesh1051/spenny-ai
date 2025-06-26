@@ -37,9 +37,16 @@ export default defineConfig({
           },
         ],
         share_target: {
-          action: "/share-target",
-          method: "GET",
+          action: "https://spenny-ai.onrender.com/share-target",
+          method: "POST",
+          enctype: "multipart/form-data",
           params: {
+            files: [
+              {
+                name: "files",
+                accept: ["image/*"],
+              },
+            ],
             title: "title",
             text: "text",
             url: "url",
