@@ -32,11 +32,12 @@
       "files": [
         {
           "name": "files",
-          "accept": [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+          "accept": ["image/*"]
         }
       ],
       "title": "title",
-      "text": "text"
+      "text": "text",
+      "url": "url"
     }
   }
 }

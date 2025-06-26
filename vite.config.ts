@@ -14,10 +14,10 @@ export default defineConfig({
         name: "Spenny AI",
         short_name: "Spenny",
         description: "Spenny AI - Your personal finance assistant",
-        theme_color: "#ffffff",
-        background_color: "#ffffff",
-        display: "standalone",
         start_url: "/",
+        display: "standalone",
+        background_color: "#ffffff",
+        theme_color: "#ffffff",
         icons: [
           {
             src: "/icon-192.png",
@@ -36,7 +36,6 @@ export default defineConfig({
             purpose: "maskable",
           },
         ],
-        // Add your share_target here
         share_target: {
           action: "/share-target",
           method: "POST",
@@ -45,11 +44,12 @@ export default defineConfig({
             files: [
               {
                 name: "files",
-                accept: [".jpg", ".jpeg", ".png", ".gif", ".webp"],
+                accept: ["image/*"],
               },
             ],
             title: "title",
             text: "text",
+            url: "url",
           },
         },
       },
