@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Plus, Upload, Edit, Trash2 } from "lucide-react";
 import {
@@ -74,6 +74,17 @@ export function HomePage({
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [lastImageUrl, setLastImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      if (e.detail && e.detail.imageUrl) {
+        setLastImageUrl(e.detail.imageUrl);
+      }
+    };
+    window.addEventListener("spenny-image-shared", handler);
+    return () => window.removeEventListener("spenny-image-shared", handler);
+  }, []);
 
   const totalExpense = expenses.reduce(
     (total, expense) => total + expense.amount,
@@ -92,6 +103,11 @@ export function HomePage({
     const file = event.target.files?.[0];
     if (file) {
       handleExpenseImage(file);
+      const url = URL.createObjectURL(file);
+      setLastImageUrl(url);
+      window.dispatchEvent(
+        new CustomEvent("spenny-image-shared", { detail: { imageUrl: url } })
+      );
     }
     event.target.value = ""; // Reset file input
   };
@@ -114,6 +130,19 @@ export function HomePage({
 
   return (
     <div>
+      {lastImageUrl && (
+        <div className="flex flex-col items-center mb-6">
+          <img
+            src={lastImageUrl}
+            alt="Last uploaded or shared receipt"
+            className="max-h-64 rounded-lg shadow border mb-2"
+            style={{ objectFit: "contain" }}
+          />
+          <span className="text-xs text-muted-foreground">
+            Last uploaded/shared image
+          </span>
+        </div>
+      )}
       <div className="flex flex-col items-center justify-center h-auto md:h-[50vh] py-12 md:py-0">
         <h2 className="text-xl md:text-2xl font-bold mb-4 text-center">
           Click the mic or button to start

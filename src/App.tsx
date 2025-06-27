@@ -13,6 +13,7 @@ import { X, Menu } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { toast } from "sonner";
+import ShareTargetPage from "./pages/ShareTargetPage";
 
 interface Expense {
   id: string;
@@ -496,6 +497,12 @@ function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route
+              path="/share-target"
+              element={
+                <ShareTargetPage handleExpenseImage={handleExpenseImage} />
+              }
+            />
           </Routes>
         </main>
       </div>
