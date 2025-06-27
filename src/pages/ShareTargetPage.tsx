@@ -4,6 +4,24 @@ interface ShareTargetPageProps {
   handleExpenseImage: (file: File) => void;
 }
 
+// Helper to read the latest shared image from IndexedDB
+async function getLatestSharedImage(): Promise<File | null> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("spenny-share-target", 1);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction("shared-images", "readonly");
+      const store = tx.objectStore("shared-images");
+      const getReq = store.get("latest");
+      getReq.onsuccess = () => {
+        resolve(getReq.result || null);
+      };
+      getReq.onerror = () => reject(getReq.error);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
 const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
   handleExpenseImage,
 }) => {
@@ -12,77 +30,81 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only run on mount
-    if (
-      window.location.pathname === "/share-target" &&
-      window.location.search === ""
-    ) {
-      // Try to extract file from POST (PWA share)
-      // This only works if the browser supports the Web Share Target API
-      // and the page is loaded as a POST with form data
-      // Chrome on Android supports this
-      (async () => {
-        try {
-          const launchQueue = (window as any).launchQueue;
-          if (launchQueue) {
-            launchQueue.setConsumer(async (launchParams: any) => {
-              if (!launchParams.files || launchParams.files.length === 0) {
-                setError("No image file was shared.");
-                return;
-              }
-              const fileHandle = launchParams.files[0];
-              const file = await fileHandle.getFile();
-              setFileName(file.name);
-              const url = URL.createObjectURL(file);
-              setImageUrl(url);
-              handleExpenseImage(file);
-            });
+    let didRun = false;
+    (async () => {
+      try {
+        // Try launchQueue (for advanced browsers)
+        const launchQueue = (window as any).launchQueue;
+        if (launchQueue) {
+          launchQueue.setConsumer(async (launchParams: any) => {
+            if (!launchParams.files || launchParams.files.length === 0) {
+              setError("No image file was shared.");
+              return;
+            }
+            const fileHandle = launchParams.files[0];
+            const file = await fileHandle.getFile();
+            setFileName(file.name);
+            const url = URL.createObjectURL(file);
+            setImageUrl(url);
+            handleExpenseImage(file);
+            didRun = true;
+          });
+          return;
+        }
+        // Try to get file from form POST (for rare desktop cases)
+        if (
+          "formData" in window &&
+          (window as any).formData instanceof FormData
+        ) {
+          const formData = (window as any).formData as FormData;
+          const files = formData.getAll("files");
+          if (
+            Array.isArray(files) &&
+            files.length > 0 &&
+            files[0] instanceof File
+          ) {
+            const file = files[0] as File;
+            setFileName(file.name);
+            const url = URL.createObjectURL(file);
+            setImageUrl(url);
+            handleExpenseImage(file);
+            didRun = true;
             return;
           }
-
-          // Fallback: try to get file from form POST
-          if (
-            "formData" in window &&
-            (window as any).formData instanceof FormData
-          ) {
-            const formData = (window as any).formData as FormData;
-            const files = formData.getAll("files");
-            if (
-              Array.isArray(files) &&
-              files.length > 0 &&
-              files[0] instanceof File
-            ) {
-              const file = files[0] as File;
-              setFileName(file.name);
-              const url = URL.createObjectURL(file);
-              setImageUrl(url);
-              handleExpenseImage(file);
-              return;
-            }
-          }
-
-          // Fallback: try to parse from document.forms
-          const form = document.forms[0];
-          if (form) {
-            const filesInput = form.elements.namedItem(
-              "files"
-            ) as HTMLInputElement | null;
-            if (filesInput && filesInput.files && filesInput.files.length > 0) {
-              const file = filesInput.files[0];
-              setFileName(file.name);
-              const url = URL.createObjectURL(file);
-              setImageUrl(url);
-              handleExpenseImage(file);
-              return;
-            }
-          }
-
-          setError("No image file was shared.");
-        } catch (e) {
-          setError("Failed to process shared image.");
         }
-      })();
-    }
+        // Try to get file from document.forms
+        const form = document.forms[0];
+        if (form) {
+          const filesInput = form.elements.namedItem(
+            "files"
+          ) as HTMLInputElement | null;
+          if (filesInput && filesInput.files && filesInput.files.length > 0) {
+            const file = filesInput.files[0];
+            setFileName(file.name);
+            const url = URL.createObjectURL(file);
+            setImageUrl(url);
+            handleExpenseImage(file);
+            didRun = true;
+            return;
+          }
+        }
+        // If none of the above, try IndexedDB (service worker flow)
+        if (!didRun) {
+          const file = await getLatestSharedImage();
+          if (file) {
+            setFileName(file.name);
+            const url = URL.createObjectURL(file);
+            setImageUrl(url);
+            handleExpenseImage(file);
+            return;
+          } else {
+            setError("No image file was shared.");
+          }
+        }
+      } catch (e) {
+        setError("Failed to process shared image.");
+      }
+    })();
   }, [handleExpenseImage]);
 
   return (

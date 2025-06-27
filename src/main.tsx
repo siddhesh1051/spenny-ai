@@ -14,3 +14,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </Router>
   </React.StrictMode>
 );
+
+// Register service worker for PWA share target support
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.error("Service worker registration failed:", err);
+    });
+  });
+}
