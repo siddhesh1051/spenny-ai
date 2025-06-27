@@ -10,6 +10,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: "auto",
       manifest: {
         name: "Spenny AI",
         short_name: "Spenny",
