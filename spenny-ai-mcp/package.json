@@ -1,0 +1,36 @@
+{
+  "name": "@spenny-ai/mcp-server",
+  "version": "1.0.0",
+  "description": "Zero-setup MCP server for Spenny AI expense tracking with Claude Desktop",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "spenny",
+    "expenses",
+    "claude",
+    "ai",
+    "expense-tracking"
+  ],
+  "author": "Spenny AI",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^17.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spenny-ai/mcp-server.git"
+  }
+}

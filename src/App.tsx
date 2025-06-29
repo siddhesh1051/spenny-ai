@@ -14,6 +14,7 @@ import { Toaster } from "@/components/ui/sonner";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
+import ApiKeysPage from "./pages/ApiKeysPage";
 
 interface Expense {
   id: string;
@@ -497,6 +498,7 @@ function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/api-keys" element={<ApiKeysPage />} />
             <Route
               path="/share-target"
               element={
