@@ -9,13 +9,12 @@ import {
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
-import dotenv from "dotenv";
-dotenv.config();
+import { createHash } from "crypto";
 
-// Supabase configuration
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Supabase configuration (hardcoded for NPM package)
+const SUPABASE_URL = "https://imtnhobztjbgnlgnhlvs.supabase.co";
+const SUPABASE_SERVICE_ROLE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltdG5ob2J6dGpiZ25sZ25obHZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDYyMTI3MCwiZXhwIjoyMDY2MTk3MjcwfQ.ZLMkOgj6YQ4b0RerFHnRV1kdUYEos_TqWPYCeX-xXnI";
 
 // Initialize Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -39,7 +38,7 @@ class SpennyMCPServer {
     this.server = new Server(
       {
         name: "spenny-ai",
-        version: "0.2.0",
+        version: "1.0.0",
       },
       {
         capabilities: {
@@ -99,7 +98,7 @@ class SpennyMCPServer {
 
   // Hash API key for secure storage
   hashApiKey(apiKey) {
-    return crypto.createHash("sha256").update(apiKey).digest("hex");
+    return createHash("sha256").update(apiKey).digest("hex");
   }
 
   setupToolHandlers() {
