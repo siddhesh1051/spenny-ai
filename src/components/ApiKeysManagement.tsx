@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { Copy, Eye, EyeOff, Trash2, Plus, Key, Info } from "lucide-react";
 import { Input } from "./ui/input";
@@ -9,7 +9,6 @@ import {
   CardTitle,
   CardContent,
   CardDescription,
-  CardFooter,
 } from "./ui/card";
 import { Skeleton } from "./ui/Skeleton";
 import { toast } from "sonner";
