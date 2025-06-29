@@ -1,5 +1,5 @@
 {
-  "name": "@spenny-ai/mcp-server",
+  "name": "spenny-ai-mcp-server",
   "version": "1.0.0",
   "description": "Zero-setup MCP server for Spenny AI expense tracking with Claude Desktop",
   "main": "index.js",
