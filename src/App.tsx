@@ -201,7 +201,7 @@ function App() {
         .select();
       if (error) throw error;
       setExpenses((prevExpenses) => [...data, ...prevExpenses]);
-      toast.success(`Added ${data.length} expense(s) from shared image!`);
+      toast.success(`Added ${data.length} expense(s) from document!`);
       console.log("✅ Expenses added successfully:", data);
     } catch (error: unknown) {
       console.error("❌ Failed to add expenses:", error);
@@ -408,6 +408,78 @@ function App() {
     setIsLoading(false);
   };
 
+  const getStructuredExpensesFromPDF = async (pdfText: string) => {
+    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setError("Gemini API key is not set.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      console.log("🤖 Calling Gemini API for PDF bank statement analysis...");
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are an AI that extracts structured expense data from bank statement text. From the following bank statement text, identify and extract only DEBIT transactions (money going out) as expenses. 
+
+Instructions:
+1. Only extract DEBIT transactions (outgoing money)
+2. Skip CREDIT transactions (incoming money like salary, deposits)
+3. Skip internal transfers between accounts
+4. For each expense, determine the most appropriate category from: food, travel, groceries, entertainment, utilities, rent, other
+5. Use transaction descriptions to create meaningful expense descriptions
+6. Return a JSON array of {amount, category, description}
+
+Bank Statement Text:
+${pdfText}`,
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      const data = await response.json();
+      console.log("🤖 Gemini API response:", data);
+
+      if (data.candidates && data.candidates.length > 0) {
+        const responseText = data.candidates[0].content.parts[0].text;
+        console.log("📄 Raw response text:", responseText);
+
+        const cleanedJson = responseText
+          .replace(/```json/g, "")
+          .replace(/```/g, "");
+        console.log("🧹 Cleaned JSON:", cleanedJson);
+
+        const structuredExpenses = JSON.parse(cleanedJson);
+        console.log("📊 Parsed expenses from PDF:", structuredExpenses);
+
+        if (structuredExpenses.length > 0) {
+          addExpenses(structuredExpenses);
+        } else {
+          toast.info("No expense transactions found in the bank statement.");
+        }
+      } else {
+        console.log("❌ No candidates in Gemini response");
+        setError("Could not extract expenses from the bank statement.");
+      }
+    } catch (error: unknown) {
+      console.error("❌ Error in Gemini API call:", error);
+      setError("Error getting structured expenses from PDF.");
+    }
+    setIsLoading(false);
+  };
+
   const handleExpenseImage = (file: File) => {
     console.log(
       "📷 Processing expense image:",
@@ -428,6 +500,392 @@ function App() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handlePDFUpload = async (file: File) => {
+    console.log("📄 Processing PDF bank statement:", file.name, file.size);
+
+    if (file.type !== "application/pdf") {
+      toast.error("Please upload a PDF file.");
+      return;
+    }
+
+    // Check file size (limit to 5MB for better performance)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast.error("PDF file is too large. Please use a file smaller than 5MB.");
+      return;
+    }
+
+    setIsLoading(true);
+    toast.info("Processing PDF bank statement...");
+
+    try {
+      // Simple approach: Convert PDF file directly to base64 and send to Gemini Vision
+      const base64Pdf = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(",")[1]; // Remove data:application/pdf;base64, prefix
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      console.log(
+        "📄 PDF converted to base64, sending to Gemini Vision API..."
+      );
+
+      // Use Gemini Vision API to process the PDF directly
+      await getStructuredExpensesFromPDFVision(base64Pdf);
+    } catch (error: unknown) {
+      console.error("❌ Error processing PDF:", error);
+
+      if (error instanceof Error) {
+        const errorMessage = error.message.toLowerCase();
+
+        if (
+          errorMessage.includes("invalid") ||
+          errorMessage.includes("corrupted")
+        ) {
+          toast.error(
+            "Invalid or corrupted PDF file. Please ensure the file is a valid PDF."
+          );
+        } else if (
+          errorMessage.includes("password") ||
+          errorMessage.includes("encrypted")
+        ) {
+          toast.error(
+            "Password-protected PDF detected. Please use an unprotected PDF file."
+          );
+        } else if (
+          errorMessage.includes("memory") ||
+          errorMessage.includes("size")
+        ) {
+          toast.error(
+            "PDF file is too complex. Try with a simpler or smaller file."
+          );
+        } else {
+          toast.error(
+            "Failed to process PDF. Please try with a different file."
+          );
+        }
+      } else {
+        toast.error("Unexpected error processing PDF. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getStructuredExpensesFromPDFVision = async (base64Pdf: string) => {
+    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setError("Gemini API key is not set.");
+      return;
+    }
+
+    try {
+      console.log("🤖 Calling Gemini Vision API for PDF analysis...");
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are an AI that extracts structured expense data from a bank statement PDF. 
+
+IMPORTANT INSTRUCTIONS:
+1. Only extract DEBIT transactions (money going OUT of the account)
+2. Skip CREDIT transactions (money coming IN like salary, deposits, refunds)
+3. Skip internal transfers between accounts
+4. Skip bank fees, interest earned, or account maintenance charges
+5. Focus on actual purchases and payments that represent expenses
+6. For each expense, determine the most appropriate category from: food, travel, groceries, entertainment, utilities, rent, other
+7. Create SHORT, CLEAN descriptions (max 50 characters) - extract the merchant name or main purpose
+8. Return a JSON array of {amount, category, description}
+9. If no expense transactions found, return an empty array []
+
+DESCRIPTION RULES:
+- Keep descriptions SHORT and CLEAN (under 50 characters)
+- Extract merchant/business name only (e.g., "Starbucks", "Amazon", "Uber")
+- Remove transaction IDs, reference numbers, timestamps
+- Remove unnecessary words like "PURCHASE", "PAYMENT", "DEBIT"
+- For ATM: use "ATM Withdrawal" 
+- For online: use just the merchant name
+- For bills: use service name (e.g., "Electric Bill", "Internet Bill")
+
+Examples of GOOD descriptions:
+- "Starbucks Coffee"
+- "Amazon Purchase"
+- "Uber Ride"
+- "ATM Withdrawal"
+- "Electric Bill"
+- "Grocery Store"
+
+Examples of BAD descriptions (avoid these):
+- "DEBIT CARD PURCHASE 12345 STARBUCKS STORE #1234 NEW YORK NY"
+- "ELECTRONIC WITHDRAWAL 567890 AMAZON.COM AMZN.COM/BILL WA"
+
+Examples of what TO extract:
+- ATM withdrawals
+- Card payments to merchants  
+- Online purchases
+- Bill payments (utilities, rent, etc.)
+- Restaurant/food purchases
+- Shopping transactions
+
+Examples of what NOT to extract:
+- Salary deposits
+- Interest earned
+- Refunds received
+- Transfers from savings
+- Bank fees
+- Account opening bonuses
+
+Please analyze this bank statement PDF and extract only expense transactions with clean, short descriptions:`,
+                  },
+                  {
+                    inlineData: {
+                      mimeType: "application/pdf",
+                      data: base64Pdf,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      const data = await response.json();
+      console.log("🤖 Gemini Vision API response:", data);
+
+      if (data.candidates && data.candidates.length > 0) {
+        const responseText = data.candidates[0].content.parts[0].text;
+        console.log("📄 Raw response text:", responseText);
+
+        const cleanedJson = responseText
+          .replace(/```json/g, "")
+          .replace(/```/g, "")
+          .trim();
+        console.log("🧹 Cleaned JSON:", cleanedJson);
+
+        const structuredExpenses = JSON.parse(cleanedJson);
+        console.log("📊 Parsed expenses from PDF:", structuredExpenses);
+
+        if (
+          Array.isArray(structuredExpenses) &&
+          structuredExpenses.length > 0
+        ) {
+          // Validate and clean the expenses with enhanced description sanitization
+          const validExpenses = structuredExpenses
+            .filter((expense) => {
+              return (
+                expense &&
+                typeof expense.amount === "number" &&
+                expense.amount > 0 &&
+                typeof expense.category === "string" &&
+                typeof expense.description === "string" &&
+                expense.description.trim().length > 0
+              );
+            })
+            .map((expense) => ({
+              amount: Math.abs(expense.amount), // Ensure positive
+              category: expense.category.toLowerCase(),
+              description: sanitizeDescription(expense.description.trim()),
+            }));
+
+          if (validExpenses.length > 0) {
+            await addExpenses(validExpenses);
+            toast.success(
+              `Successfully extracted ${validExpenses.length} expense transactions from bank statement!`
+            );
+          } else {
+            toast.info(
+              "No valid expense transactions found in the bank statement."
+            );
+          }
+        } else {
+          toast.info(
+            "No expense transactions found in the bank statement. The PDF might contain only credit transactions or account summaries."
+          );
+        }
+      } else {
+        console.log("❌ No candidates in Gemini response");
+        setError("Could not extract expenses from the bank statement PDF.");
+      }
+    } catch (error: unknown) {
+      console.error("❌ Error in Gemini Vision API call:", error);
+      if (error instanceof Error && error.message.includes("JSON")) {
+        toast.error(
+          "Could not parse bank statement data. Please ensure this is a proper bank statement PDF."
+        );
+      } else {
+        setError("Error processing bank statement PDF with AI.");
+      }
+    }
+  };
+
+  // Helper function to sanitize and shorten descriptions
+  const sanitizeDescription = (description: string): string => {
+    if (!description || description.trim().length === 0) {
+      return "Transaction";
+    }
+
+    let cleaned = description.trim();
+
+    // Remove common bank prefixes and suffixes
+    const prefixesToRemove = [
+      /^DEBIT CARD PURCHASE\s*/i,
+      /^DEBIT CARD\s*/i,
+      /^CARD PURCHASE\s*/i,
+      /^PURCHASE\s*/i,
+      /^PAYMENT\s*/i,
+      /^ELECTRONIC WITHDRAWAL\s*/i,
+      /^ONLINE TRANSFER\s*/i,
+      /^RECURRING PAYMENT\s*/i,
+      /^DIRECT DEBIT\s*/i,
+      /^WITHDRAWAL\s*/i,
+      /^POS\s*/i,
+      /^ATM\s*/i,
+    ];
+
+    // Remove suffixesToRemove patterns
+    const suffixesToRemove = [
+      /\s+\d{2}\/\d{2}\/\d{4}.*$/i, // Remove dates
+      /\s+\d{2}\/\d{2}.*$/i, // Remove short dates
+      /\s+#\d+.*$/i, // Remove reference numbers
+      /\s+REF\s*\d+.*$/i, // Remove reference numbers
+      /\s+[A-Z]{2}\s*\d+.*$/i, // Remove state codes and numbers
+      /\s+\d{4,}.*$/i, // Remove long numbers (transaction IDs)
+      /\s+AUTH.*$/i, // Remove authorization codes
+      /\s+PENDING.*$/i, // Remove pending status
+      /\s+\$\d+.*$/i, // Remove duplicate amounts
+    ];
+
+    // Apply prefix removal
+    prefixesToRemove.forEach((regex) => {
+      cleaned = cleaned.replace(regex, "");
+    });
+
+    // Apply suffix removal
+    suffixesToRemove.forEach((regex) => {
+      cleaned = cleaned.replace(regex, "");
+    });
+
+    // Remove extra spaces and clean up
+    cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+    // Extract merchant name patterns
+    const merchantPatterns = [
+      // Amazon patterns
+      /AMAZON\.?COM/i,
+      /AMZN\.?COM/i,
+      // Common food chains
+      /STARBUCKS/i,
+      /MCDONALDS/i,
+      /SUBWAY/i,
+      /DOMINOS/i,
+      /PIZZA HUT/i,
+      // Uber/Lyft
+      /UBER/i,
+      /LYFT/i,
+      // Gas stations
+      /SHELL/i,
+      /EXXON/i,
+      /CHEVRON/i,
+      /BP /i,
+      // Grocery stores
+      /WALMART/i,
+      /TARGET/i,
+      /COSTCO/i,
+      /SAFEWAY/i,
+      // Utilities
+      /ELECTRIC/i,
+      /WATER/i,
+      /GAS COMPANY/i,
+      /INTERNET/i,
+      /PHONE/i,
+    ];
+
+    // Check for known merchant patterns
+    for (const pattern of merchantPatterns) {
+      const match = cleaned.match(pattern);
+      if (match) {
+        let merchantName = match[0];
+        // Clean up common merchant names
+        if (merchantName.toLowerCase().includes("amazon")) {
+          return "Amazon Purchase";
+        }
+        if (merchantName.toLowerCase().includes("starbucks")) {
+          return "Starbucks";
+        }
+        if (merchantName.toLowerCase().includes("uber")) {
+          return "Uber Ride";
+        }
+        if (merchantName.toLowerCase().includes("lyft")) {
+          return "Lyft Ride";
+        }
+        if (merchantName.toLowerCase().includes("electric")) {
+          return "Electric Bill";
+        }
+        return (
+          merchantName.charAt(0).toUpperCase() +
+          merchantName.slice(1).toLowerCase()
+        );
+      }
+    }
+
+    // ATM withdrawal detection
+    if (/ATM|CASH/i.test(cleaned)) {
+      return "ATM Withdrawal";
+    }
+
+    // Bill payment detection
+    if (/BILL|UTILITY|ELECTRIC|WATER|GAS|PHONE|INTERNET/i.test(cleaned)) {
+      return "Bill Payment";
+    }
+
+    // Online purchase detection
+    if (/ONLINE|WEB|\.COM/i.test(cleaned)) {
+      return "Online Purchase";
+    }
+
+    // If still too long, take first meaningful part
+    if (cleaned.length > 50) {
+      const words = cleaned.split(" ");
+      // Try to get first 2-3 meaningful words
+      let shortDesc = words.slice(0, 3).join(" ");
+      if (shortDesc.length > 50) {
+        shortDesc = words.slice(0, 2).join(" ");
+      }
+      if (shortDesc.length > 50) {
+        shortDesc = words[0];
+      }
+      cleaned = shortDesc;
+    }
+
+    // Final cleanup
+    cleaned = cleaned.replace(/[^\w\s-]/g, "").trim();
+
+    // Capitalize first letter
+    if (cleaned.length > 0) {
+      cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+
+    // If still empty or too short, provide a default
+    if (cleaned.length < 3) {
+      return "Transaction";
+    }
+
+    return cleaned.length > 50 ? cleaned.substring(0, 47) + "..." : cleaned;
   };
 
   if (!session) {
@@ -486,6 +944,7 @@ function App() {
                   clearAllExpenses={clearAllExpenses}
                   getStructuredExpenses={getStructuredExpenses}
                   handleExpenseImage={handleExpenseImage}
+                  handlePDFUpload={handlePDFUpload}
                   deleteExpense={deleteExpense}
                   updateExpense={updateExpense}
                 />

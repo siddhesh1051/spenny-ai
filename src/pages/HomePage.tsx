@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Plus, Upload, Edit, Trash2 } from "lucide-react";
+import { Mic, Plus, Upload, Edit, Trash2, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +57,7 @@ export function HomePage({
   clearAllExpenses,
   getStructuredExpenses,
   handleExpenseImage,
+  handlePDFUpload,
   deleteExpense,
   updateExpense,
 }: {
@@ -67,6 +68,7 @@ export function HomePage({
   clearAllExpenses: () => void;
   getStructuredExpenses: (text: string) => Promise<void>;
   handleExpenseImage: (file: File) => void;
+  handlePDFUpload: (file: File) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   updateExpense: (id: string, updatedFields: Partial<Expense>) => Promise<void>;
 }) {
@@ -108,6 +110,14 @@ export function HomePage({
       window.dispatchEvent(
         new CustomEvent("spenny-image-shared", { detail: { imageUrl: url } })
       );
+    }
+    event.target.value = ""; // Reset file input
+  };
+
+  const handlePDFUploadInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handlePDFUpload(file);
     }
     event.target.value = ""; // Reset file input
   };
@@ -174,13 +184,13 @@ export function HomePage({
             </button>
           </div>
         </div>
-        <div className="flex flex-col md:flex-row items-center gap-4 mt-4">
+        <div className="flex flex-col lg:flex-row items-center gap-4 mt-4 max-w-4xl">
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button
                 variant="outline"
                 size="lg"
-                className="rounded-full shadow-lg transition-transform transform hover:scale-105"
+                className="rounded-full shadow-lg transition-transform transform hover:scale-105 w-full lg:w-auto"
                 disabled={isLoading}
               >
                 Add Manually <Plus className="h-4 w-4 ml-2" />
@@ -206,14 +216,18 @@ export function HomePage({
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
           <Button
             variant="outline"
             size="lg"
-            className="rounded-full shadow-lg transition-transform transform hover:scale-105"
+            className="rounded-full shadow-lg transition-transform transform hover:scale-105 w-full lg:w-auto"
             disabled={isLoading}
           >
-            <label htmlFor="image-upload" className="flex items-center">
-              Upload Screenshot
+            <label
+              htmlFor="image-upload"
+              className="flex items-center cursor-pointer"
+            >
+              Upload Image
               {isLoading && !isRecording ? (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary ml-2"></div>
               ) : (
@@ -226,6 +240,33 @@ export function HomePage({
               accept="image/*"
               className="hidden"
               onChange={handleImageUpload}
+              disabled={isLoading}
+            />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="lg"
+            className="rounded-full shadow-lg transition-transform transform hover:scale-105 w-full lg:w-auto"
+            disabled={isLoading}
+          >
+            <label
+              htmlFor="pdf-upload"
+              className="flex items-center cursor-pointer"
+            >
+              Upload PDF
+              {isLoading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary ml-2"></div>
+              ) : (
+                <FileText className="h-4 w-4 ml-2" />
+              )}
+            </label>
+            <input
+              id="pdf-upload"
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={handlePDFUploadInput}
               disabled={isLoading}
             />
           </Button>
