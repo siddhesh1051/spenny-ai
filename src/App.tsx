@@ -185,14 +185,14 @@ function App() {
     }
   }, [session]);
 
-  const addExpenses = async (newExpenses: Omit<Expense, "id" | "date">[]) => {
+  const addExpenses = async (newExpenses: Omit<Expense, "id">[]) => {
     if (!session) return;
     try {
       console.log("💾 Adding expenses to database:", newExpenses);
 
       const expensesWithDateAndUser = newExpenses.map((e) => ({
         ...e,
-        date: new Date().toISOString(),
+        date: e.date || new Date().toISOString(), // Use provided date or fallback
         user_id: session.user.id,
       }));
       const { data, error } = await supabase
@@ -599,57 +599,7 @@ ${pdfText}`,
               {
                 parts: [
                   {
-                    text: `You are an AI that extracts structured expense data from a bank statement PDF. 
-
-IMPORTANT INSTRUCTIONS:
-1. Only extract DEBIT transactions (money going OUT of the account)
-2. Skip CREDIT transactions (money coming IN like salary, deposits, refunds)
-3. Skip internal transfers between accounts
-4. Skip bank fees, interest earned, or account maintenance charges
-5. Focus on actual purchases and payments that represent expenses
-6. For each expense, determine the most appropriate category from: food, travel, groceries, entertainment, utilities, rent, other
-7. Create SHORT, CLEAN descriptions (max 50 characters) - extract the merchant name or main purpose
-8. Return a JSON array of {amount, category, description}
-9. If no expense transactions found, return an empty array []
-
-DESCRIPTION RULES:
-- Keep descriptions SHORT and CLEAN (under 50 characters)
-- Extract merchant/business name only (e.g., "Starbucks", "Amazon", "Uber")
-- Remove transaction IDs, reference numbers, timestamps
-- Remove unnecessary words like "PURCHASE", "PAYMENT", "DEBIT"
-- For ATM: use "ATM Withdrawal" 
-- For online: use just the merchant name
-- For bills: use service name (e.g., "Electric Bill", "Internet Bill")
-
-Examples of GOOD descriptions:
-- "Starbucks Coffee"
-- "Amazon Purchase"
-- "Uber Ride"
-- "ATM Withdrawal"
-- "Electric Bill"
-- "Grocery Store"
-
-Examples of BAD descriptions (avoid these):
-- "DEBIT CARD PURCHASE 12345 STARBUCKS STORE #1234 NEW YORK NY"
-- "ELECTRONIC WITHDRAWAL 567890 AMAZON.COM AMZN.COM/BILL WA"
-
-Examples of what TO extract:
-- ATM withdrawals
-- Card payments to merchants  
-- Online purchases
-- Bill payments (utilities, rent, etc.)
-- Restaurant/food purchases
-- Shopping transactions
-
-Examples of what NOT to extract:
-- Salary deposits
-- Interest earned
-- Refunds received
-- Transfers from savings
-- Bank fees
-- Account opening bonuses
-
-Please analyze this bank statement PDF and extract only expense transactions with clean, short descriptions:`,
+                    text: `You are an AI that extracts structured expense data from a bank statement PDF. \n\nIMPORTANT INSTRUCTIONS:\n1. Only extract DEBIT transactions (money going OUT of the account)\n2. Skip CREDIT transactions (money coming IN like salary, deposits, refunds)\n3. Skip internal transfers between accounts\n4. Skip bank fees, interest earned, or account maintenance charges\n5. Focus on actual purchases and payments that represent expenses\n6. For each expense, determine the most appropriate category from: food, travel, groceries, entertainment, utilities, rent, other\n7. Create SHORT, CLEAN descriptions (max 50 characters) - extract the merchant name or main purpose\n8. Return a JSON array of {amount, category, description, date} where date is the transaction date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ)\n9. If no expense transactions found, return an empty array []\n\nDESCRIPTION RULES:\n- Keep descriptions SHORT and CLEAN (under 50 characters)\n- Extract merchant/business name only (e.g., "Starbucks", "Amazon", "Uber")\n- Remove transaction IDs, reference numbers, timestamps\n- Remove unnecessary words like "PURCHASE", "PAYMENT", "DEBIT"\n- For ATM: use "ATM Withdrawal" \n- For online: use just the merchant name\n- For bills: use service name (e.g., "Electric Bill", "Internet Bill")\n\nExamples of GOOD descriptions:\n- "Starbucks Coffee"\n- "Amazon Purchase"\n- "Uber Ride"\n- "ATM Withdrawal"\n- "Electric Bill"\n- "Grocery Store"\n\nExamples of BAD descriptions (avoid these):\n- "DEBIT CARD PURCHASE 12345 STARBUCKS STORE #1234 NEW YORK NY"\n- "ELECTRONIC WITHDRAWAL 567890 AMAZON.COM AMZN.COM/BILL WA"\n\nExamples of what TO extract:\n- ATM withdrawals\n- Card payments to merchants  \n- Online purchases\n- Bill payments (utilities, rent, etc.)\n- Restaurant/food purchases\n- Shopping transactions\n\nExamples of what NOT to extract:\n- Salary deposits\n- Interest earned\n- Refunds received\n- Transfers from savings\n- Bank fees\n- Account opening bonuses\n\nPlease analyze this bank statement PDF and extract only expense transactions with clean, short descriptions, and include the transaction date for each expense as an ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ):`,
                   },
                   {
                     inlineData: {
@@ -693,13 +643,16 @@ Please analyze this bank statement PDF and extract only expense transactions wit
                 expense.amount > 0 &&
                 typeof expense.category === "string" &&
                 typeof expense.description === "string" &&
-                expense.description.trim().length > 0
+                expense.description.trim().length > 0 &&
+                typeof expense.date === "string" &&
+                !isNaN(Date.parse(expense.date))
               );
             })
             .map((expense) => ({
               amount: Math.abs(expense.amount), // Ensure positive
               category: expense.category.toLowerCase(),
               description: sanitizeDescription(expense.description.trim()),
+              date: new Date(expense.date).toISOString(), // Normalize to ISO
             }));
 
           if (validExpenses.length > 0) {

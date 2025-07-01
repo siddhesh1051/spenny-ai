@@ -106,20 +106,6 @@ export function Sidebar({
             <Settings className="mr-3 h-5 w-5" />
             Settings
           </NavLink>
-          <NavLink
-            to="/share-target"
-            className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`
-            }
-            onClick={handleLinkClick}
-          >
-            <Share className="mr-3 h-5 w-5" />
-            Share Image
-          </NavLink>
         </nav>
         <div className="p-4 mt-auto">
           <DropdownMenu>

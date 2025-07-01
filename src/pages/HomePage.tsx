@@ -77,6 +77,7 @@ export function HomePage({
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [lastImageUrl, setLastImageUrl] = useState<string | null>(null);
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -278,13 +279,48 @@ export function HomePage({
           <div className="flex justify-between items-center">
             <CardTitle>Recent Expenses</CardTitle>
             {expenses.length > 0 && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={clearAllExpenses}
+              <Dialog
+                open={isClearDialogOpen}
+                onOpenChange={setIsClearDialogOpen}
               >
-                Clear All
-              </Button>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsClearDialogOpen(true)}
+                  >
+                    Clear All
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Clear All Expenses?</DialogTitle>
+                    <DialogDescription>
+                      Are you sure you want to delete all expenses? This action
+                      cannot be undone.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="cursor-pointer"
+                      onClick={() => setIsClearDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        setIsClearDialogOpen(false);
+                        clearAllExpenses();
+                      }}
+                    >
+                      Yes, Clear All
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             )}
           </div>
           <CardDescription>
