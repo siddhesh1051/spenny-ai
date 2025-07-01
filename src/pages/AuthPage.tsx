@@ -80,7 +80,16 @@ export default function AuthPage() {
       const { error } =
         action === "signIn"
           ? await supabase.auth.signInWithPassword({ email, password })
-          : await supabase.auth.signUp({ email, password });
+          : await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                data: {
+                  full_name: email,
+                  gemini_api_key: "",
+                },
+              },
+            });
       if (error) throw error;
       if (action === "signUp") {
         setSignUpConfirmationMessage(

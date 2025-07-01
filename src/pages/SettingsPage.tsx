@@ -44,6 +44,8 @@ export default function SettingsPage() {
         .select(`full_name, gemini_api_key`)
         .eq("id", user.id)
         .single();
+
+      console.log("data", data);
       if (error && error.code !== "PGRST116") {
         // PGRST116: "object not found"
         throw error;
