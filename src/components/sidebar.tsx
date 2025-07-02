@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2, Settings, LogOut, Share } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
