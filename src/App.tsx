@@ -5,6 +5,7 @@ import AuthPage from "./pages/AuthPage";
 import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { AllTransactionsPage } from "./pages/AllTransactionsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { Sidebar } from "./components/sidebar";
 import { ModeToggle } from "./components/mode-toggle";
@@ -250,58 +251,145 @@ function App() {
   };
 
   const handleMicClick = () => {
+    // Check browser support
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError("Speech recognition is not supported in this browser.");
+      setError("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.");
       return;
     }
 
+    // Check if already recording
     if (isRecording) {
       setIsRecording(false);
       return;
     }
 
+    // Check HTTPS requirement (except for localhost)
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      setError("Speech recognition requires HTTPS. Please use a secure connection.");
+      return;
+    }
+
+    // Check microphone permission first
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
+        startSpeechRecognition();
+      })
+      .catch((error) => {
+        setError("Microphone permission is required. Please allow microphone access and try again.");
+      });
+  };
+
+  const startSpeechRecognition = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    
     const recognition = new SpeechRecognition();
+    
+    // Configure recognition settings for multiple expenses
     recognition.lang = "en-US";
     recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    recognition.maxAlternatives = 3; // Get multiple alternatives for better accuracy
+    recognition.continuous = false; // Stop after first result
 
+    // Event handlers
     recognition.onstart = () => {
       setIsRecording(true);
+      setError(null); // Clear any previous errors
     };
 
     recognition.onend = () => {
       setIsRecording(false);
     };
 
-    recognition.onresult = (event: unknown) => {
-      type SpeechResult = { transcript: string };
-      type SpeechEvent = { results: SpeechResult[][] };
-      if (
-        typeof event === "object" &&
-        event !== null &&
-        "results" in event &&
-        Array.isArray((event as SpeechEvent).results) &&
-        (event as SpeechEvent).results[0] &&
-        (event as SpeechEvent).results[0][0]
-      ) {
-        const speechResult = (event as SpeechEvent).results[0][0].transcript;
-        getStructuredExpenses(speechResult);
+    recognition.onerror = (event) => {
+      setIsRecording(false);
+      
+      let errorMessage = "Speech recognition error";
+      switch (event.error) {
+        case 'not-allowed':
+          errorMessage = "Microphone access denied. Please allow microphone access.";
+          break;
+        case 'no-speech':
+          errorMessage = "No speech detected. Please speak clearly.";
+          break;
+        case 'audio-capture':
+          errorMessage = "Audio capture failed. Please check your microphone.";
+          break;
+        case 'network':
+          errorMessage = "Network error. Please check your internet connection.";
+          break;
+        case 'service-not-allowed':
+          errorMessage = "Speech recognition service not allowed.";
+          break;
+        default:
+          errorMessage = `Speech recognition error: ${event.error}`;
+      }
+      setError(errorMessage);
+    };
+
+    recognition.onnomatch = () => {
+      setIsRecording(false);
+      setError("No speech detected. Please try speaking again.");
+    };
+
+    recognition.onresult = (event: any) => {
+      try {
+        // Check if we have results
+        if (event.results && event.results.length > 0) {
+          const result = event.results[0]; // Get first result
+          
+          if (result.length > 0) {
+            // Get the best transcript (highest confidence)
+            let bestTranscript = "";
+            let bestConfidence = 0;
+            
+            for (let i = 0; i < result.length; i++) {
+              const transcript = result[i].transcript;
+              const confidence = result[i].confidence || 0;
+              
+              if (confidence > bestConfidence) {
+                bestConfidence = confidence;
+                bestTranscript = transcript;
+              }
+            }
+            
+            if (bestTranscript && bestTranscript.trim().length > 0) {
+              getStructuredExpenses(bestTranscript);
+            } else {
+              setError("No speech detected. Please try again.");
+            }
+          } else {
+            setError("No speech detected. Please try again.");
+          }
+        } else {
+          setError("No speech detected. Please try again.");
+        }
+      } catch (error) {
+        setError("Error processing speech result");
       }
     };
 
-    recognition.start();
+    // Start recognition with error handling
+    try {
+      recognition.start();
+    } catch (error) {
+      setError("Failed to start speech recognition. Please try again.");
+    }
   };
 
   const getStructuredExpenses = async (text: string) => {
     const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
-      setError("Gemini API key is not set.");
+      setError("Gemini API key is not set. Please check your settings.");
       return;
     }
+    
     setIsLoading(true);
     setError(null);
+    
     try {
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
@@ -315,7 +403,57 @@ function App() {
               {
                 parts: [
                   {
-                    text: `You are an AI that extracts structured expense data from natural language input. For the sentence: '${text}', return a JSON array of {amount, category, description}.`,
+                    text: `You are an AI that extracts structured expense data from natural language input. 
+
+IMPORTANT: Extract ALL expenses mentioned in the text, even if multiple expenses are mentioned in a single sentence.
+
+For the input: '${text}'
+
+Return a JSON array of objects with this exact format:
+[
+  {
+    "amount": number,
+    "category": string,
+    "description": string
+  }
+]
+
+CATEGORY RULES:
+- Use only these categories: food, travel, groceries, entertainment, utilities, rent, other
+- food: restaurants, cafes, fast food, dining out
+- groceries: supermarket, grocery store, fresh food, household items
+- travel: transportation, fuel, parking, public transport, flights, hotels
+- entertainment: movies, games, hobbies, sports, concerts
+- utilities: electricity, water, gas, internet, phone bills
+- rent: housing rent, accommodation
+- other: anything that doesn't fit above categories
+
+DESCRIPTION RULES:
+- Keep descriptions short and clean (max 50 characters)
+- Extract the main item/service name
+- Remove unnecessary words like "spent", "bought", "paid"
+
+EXAMPLES:
+Input: "spent 10 on coffee and 150 for groceries"
+Output: [
+  {"amount": 10, "category": "food", "description": "Coffee"},
+  {"amount": 150, "category": "groceries", "description": "Groceries"}
+]
+
+Input: "bought lunch for 25 dollars, paid 50 for gas, and spent 15 on parking"
+Output: [
+  {"amount": 25, "category": "food", "description": "Lunch"},
+  {"amount": 50, "category": "travel", "description": "Gas"},
+  {"amount": 15, "category": "travel", "description": "Parking"}
+]
+
+Input: "paid 100 for electricity bill and 80 for internet"
+Output: [
+  {"amount": 100, "category": "utilities", "description": "Electricity"},
+  {"amount": 80, "category": "utilities", "description": "Internet"}
+]
+
+Please extract all expenses from: '${text}'`
                   },
                 ],
               },
@@ -324,21 +462,48 @@ function App() {
         }
       );
 
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
       const data = await response.json();
+      
       if (data.candidates && data.candidates.length > 0) {
         const responseText = data.candidates[0].content.parts[0].text;
+        
         const cleanedJson = responseText
           .replace(/```json/g, "")
-          .replace(/```/g, "");
+          .replace(/```/g, "")
+          .trim();
+        
         const structuredExpenses = JSON.parse(cleanedJson);
-        addExpenses(structuredExpenses);
+        
+        // Validate the expenses before adding
+        if (Array.isArray(structuredExpenses) && structuredExpenses.length > 0) {
+          const validExpenses = structuredExpenses.filter(expense => 
+            expense && 
+            typeof expense.amount === 'number' && 
+            expense.amount > 0 &&
+            typeof expense.category === 'string' &&
+            typeof expense.description === 'string' &&
+            expense.description.trim().length > 0
+          );
+          
+          if (validExpenses.length > 0) {
+            addExpenses(validExpenses);
+          } else {
+            setError("No valid expenses could be extracted from your speech.");
+          }
+        } else {
+          setError("Could not extract expenses from the provided text.");
+        }
       } else {
         setError("Could not extract expenses from the provided text.");
       }
     } catch (error: unknown) {
-      setError("Error getting structured expenses.");
-      console.error("Error getting structured expenses:", error);
+      setError(`Error processing speech: ${error instanceof Error ? error.message : String(error)}`);
     }
+    
     setIsLoading(false);
   };
 
@@ -822,12 +987,9 @@ function App() {
                   isRecording={isRecording}
                   isLoading={isLoading}
                   handleMicClick={handleMicClick}
-                  clearAllExpenses={clearAllExpenses}
                   getStructuredExpenses={getStructuredExpenses}
                   handleExpenseImage={handleExpenseImage}
                   handlePDFUpload={handlePDFUpload}
-                  deleteExpense={deleteExpense}
-                  updateExpense={updateExpense}
                 />
               }
             />
@@ -835,6 +997,17 @@ function App() {
               path="/analytics"
               element={
                 <AnalyticsPage expenses={expenses} isLoading={isLoading} />
+              }
+            />
+            <Route
+              path="/transactions"
+              element={
+                <AllTransactionsPage
+                  expenses={expenses}
+                  isLoading={isLoading}
+                  deleteExpense={deleteExpense}
+                  updateExpense={updateExpense}
+                />
               }
             />
             <Route path="/settings" element={<SettingsPage />} />

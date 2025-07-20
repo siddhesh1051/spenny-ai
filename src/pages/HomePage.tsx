@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Plus, Upload, Edit, Trash2, FileText } from "lucide-react";
+import { Mic, Plus, Upload, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,35 +11,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/Skeleton";
-
-const categories: { [key: string]: string } = {
-  food: "🍔",
-  travel: "✈️",
-  groceries: "🛒",
-  entertainment: "🎉",
-  utilities: "💡",
-  rent: "🏠",
-  other: "🤷",
-};
 
 interface Expense {
   id: string;
@@ -54,30 +25,21 @@ export function HomePage({
   isRecording,
   isLoading,
   handleMicClick,
-  clearAllExpenses,
   getStructuredExpenses,
   handleExpenseImage,
   handlePDFUpload,
-  deleteExpense,
-  updateExpense,
 }: {
   expenses: Expense[];
   isRecording: boolean;
   isLoading: boolean;
   handleMicClick: () => void;
-  clearAllExpenses: () => void;
   getStructuredExpenses: (text: string) => Promise<void>;
   handleExpenseImage: (file: File) => void;
   handlePDFUpload: (file: File) => Promise<void>;
-  deleteExpense: (id: string) => Promise<void>;
-  updateExpense: (id: string, updatedFields: Partial<Expense>) => Promise<void>;
 }) {
   const [textInput, setTextInput] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [lastImageUrl, setLastImageUrl] = useState<string | null>(null);
-  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -88,11 +50,6 @@ export function HomePage({
     window.addEventListener("spenny-image-shared", handler);
     return () => window.removeEventListener("spenny-image-shared", handler);
   }, []);
-
-  const totalExpense = expenses.reduce(
-    (total, expense) => total + expense.amount,
-    0
-  );
 
   const handleSaveTextExpense = async () => {
     if (textInput.trim()) {
@@ -121,22 +78,6 @@ export function HomePage({
       handlePDFUpload(file);
     }
     event.target.value = ""; // Reset file input
-  };
-
-  const handleEditClick = (expense: Expense) => {
-    setEditingExpense({ ...expense });
-    setIsEditDialogOpen(true);
-  };
-
-  const handleUpdateExpense = async () => {
-    if (!editingExpense) return;
-    await updateExpense(editingExpense.id, {
-      amount: editingExpense.amount,
-      category: editingExpense.category,
-      description: editingExpense.description,
-    });
-    setIsEditDialogOpen(false);
-    setEditingExpense(null);
   };
 
   return (
@@ -273,277 +214,6 @@ export function HomePage({
           </Button>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle>Recent Expenses</CardTitle>
-            {expenses.length > 0 && (
-              <Dialog
-                open={isClearDialogOpen}
-                onOpenChange={setIsClearDialogOpen}
-              >
-                <DialogTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setIsClearDialogOpen(true)}
-                  >
-                    Clear All
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Clear All Expenses?</DialogTitle>
-                    <DialogDescription>
-                      Are you sure you want to delete all expenses? This action
-                      cannot be undone.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      className="cursor-pointer"
-                      onClick={() => setIsClearDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => {
-                        setIsClearDialogOpen(false);
-                        clearAllExpenses();
-                      }}
-                    >
-                      Yes, Clear All
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-          <CardDescription>
-            A list of your most recent expenses.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-72 w-full">
-            {isLoading ? (
-              <>
-                {/* Mobile View - Skeleton Card List */}
-                <div className="md:hidden space-y-4">
-                  {[...Array(3)].map((_, i) => (
-                    <Card key={i} className="px-4 py-3 gap-2">
-                      <Skeleton className="h-4 w-1/2 mb-2" />
-                      <Skeleton className="h-3 w-1/4 mb-2" />
-                      <Skeleton className="h-4 w-1/3" />
-                    </Card>
-                  ))}
-                </div>
-                {/* Desktop View - Skeleton Table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {[...Array(5)].map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell>
-                            <Skeleton className="h-4 w-24" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-16" />
-                          </TableCell>
-                          <TableCell>
-                            <Skeleton className="h-4 w-20" />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Skeleton className="h-4 w-12" />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Skeleton className="h-4 w-16" />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
-            ) : expenses.length === 0 ? (
-              <p className="text-center text-muted-foreground">
-                No expenses yet. Click the mic or button to add some.
-              </p>
-            ) : (
-              <>
-                {/* Mobile View - Card List */}
-                <div className="md:hidden space-y-4">
-                  {expenses.map((expense) => (
-                    <Card key={expense.id} className="px-4 py-3 gap-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-semibold">{expense.description}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {expense.category}
-                          </p>
-                        </div>
-                        <p className="font-bold">
-                          ₹{expense.amount.toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="flex justify-between items-center mt-2">
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(expense.date).toLocaleDateString()}
-                        </p>
-                        <div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditClick(expense)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteExpense(expense.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-                {/* Desktop View - Table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {expenses.map((expense) => (
-                        <TableRow key={expense.id}>
-                          <TableCell>{expense.description}</TableCell>
-                          <TableCell>
-                            <span className="mr-2">
-                              {categories[expense.category] || "🤷"}
-                            </span>
-                            {expense.category}
-                          </TableCell>
-                          <TableCell>
-                            {new Date(expense.date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            ₹{expense.amount.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditClick(expense)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteExpense(expense.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
-            )}
-          </ScrollArea>
-        </CardContent>
-        {expenses.length > 0 && (
-          <CardFooter className="flex justify-end font-bold text-xl">
-            Total: ₹{totalExpense.toFixed(2)}
-          </CardFooter>
-        )}
-      </Card>
-      {editingExpense && (
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Expense</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="description" className="text-right">
-                  Description
-                </label>
-                <Input
-                  id="description"
-                  value={editingExpense.description}
-                  onChange={(e) =>
-                    setEditingExpense({
-                      ...editingExpense,
-                      description: e.target.value,
-                    })
-                  }
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="amount" className="text-right">
-                  Amount
-                </label>
-                <Input
-                  id="amount"
-                  type="number"
-                  value={editingExpense.amount}
-                  onChange={(e) =>
-                    setEditingExpense({
-                      ...editingExpense,
-                      amount: Number(e.target.value),
-                    })
-                  }
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="category" className="text-right">
-                  Category
-                </label>
-                <Input
-                  id="category"
-                  value={editingExpense.category}
-                  onChange={(e) =>
-                    setEditingExpense({
-                      ...editingExpense,
-                      category: e.target.value,
-                    })
-                  }
-                  className="col-span-3"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleUpdateExpense}>Save Changes</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   );
 }

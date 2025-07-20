@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2, Settings, LogOut } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut, Receipt } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
@@ -77,6 +77,20 @@ export function Sidebar({
           >
             <Home className="mr-3 h-5 w-5" />
             Home
+          </NavLink>
+          <NavLink
+            to="/transactions"
+            className={({ isActive }) =>
+              `flex items-center px-4 py-2 rounded-lg ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`
+            }
+            onClick={handleLinkClick}
+          >
+            <Receipt className="mr-3 h-5 w-5" />
+            All Transactions
           </NavLink>
           <NavLink
             to="/analytics"
