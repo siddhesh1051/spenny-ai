@@ -21,7 +21,6 @@ interface Expense {
 }
 
 export function HomePage({
-  expenses,
   isRecording,
   isLoading,
   handleMicClick,
@@ -29,7 +28,6 @@ export function HomePage({
   handleExpenseImage,
   handlePDFUpload,
 }: {
-  expenses: Expense[];
   isRecording: boolean;
   isLoading: boolean;
   handleMicClick: () => void;

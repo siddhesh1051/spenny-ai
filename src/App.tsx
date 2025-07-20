@@ -236,19 +236,6 @@ function App() {
     }
   };
 
-  const clearAllExpenses = async () => {
-    if (!session) return;
-    try {
-      const { error } = await supabase
-        .from("expenses")
-        .delete()
-        .eq("user_id", session.user.id);
-      if (error) throw error;
-      setExpenses([]);
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : String(error));
-    }
-  };
 
   const handleMicClick = () => {
     // Check browser support
@@ -278,6 +265,7 @@ function App() {
         startSpeechRecognition();
       })
       .catch((error) => {
+        console.error("❌ Microphone permission denied:", error);
         setError("Microphone permission is required. Please allow microphone access and try again.");
       });
   };
@@ -304,7 +292,7 @@ function App() {
       setIsRecording(false);
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       setIsRecording(false);
       
       let errorMessage = "Speech recognition error";
@@ -983,7 +971,6 @@ Please extract all expenses from: '${text}'`
               path="/"
               element={
                 <HomePage
-                  expenses={expenses}
                   isRecording={isRecording}
                   isLoading={isLoading}
                   handleMicClick={handleMicClick}
