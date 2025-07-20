@@ -12,13 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
-interface Expense {
-  id: string;
-  amount: number;
-  category: string;
-  description: string;
-  date: string;
-}
 
 export function HomePage({
   isRecording,
