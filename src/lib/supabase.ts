@@ -13,3 +13,6 @@ if (!supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// TODO: If the table is still called 'expenses', update the schema to include a 'type' column (credit/debit)
+// Update all queries/inserts to use the 'type' field for credit/debit
+

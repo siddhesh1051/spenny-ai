@@ -17,15 +17,15 @@ export function HomePage({
   isRecording,
   isLoading,
   handleMicClick,
-  getStructuredExpenses,
-  handleExpenseImage,
+  getStructuredTransactions, // renamed from getStructuredExpenses
+  handleTransactionImage, // renamed from handleExpenseImage
   handlePDFUpload,
 }: {
   isRecording: boolean;
   isLoading: boolean;
   handleMicClick: () => void;
-  getStructuredExpenses: (text: string) => Promise<void>;
-  handleExpenseImage: (file: File) => void;
+  getStructuredTransactions: (text: string) => Promise<void>;
+  handleTransactionImage: (file: File) => void;
   handlePDFUpload: (file: File) => Promise<void>;
 }) {
   const [textInput, setTextInput] = useState("");
@@ -42,9 +42,9 @@ export function HomePage({
     return () => window.removeEventListener("spenny-image-shared", handler);
   }, []);
 
-  const handleSaveTextExpense = async () => {
+  const handleSaveTextTransaction = async () => {
     if (textInput.trim()) {
-      await getStructuredExpenses(textInput);
+      await getStructuredTransactions(textInput);
       setTextInput("");
       setIsAddDialogOpen(false);
     }
@@ -53,7 +53,7 @@ export function HomePage({
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      handleExpenseImage(file);
+      handleTransactionImage(file);
       const url = URL.createObjectURL(file);
       setLastImageUrl(url);
       window.dispatchEvent(
@@ -131,20 +131,19 @@ export function HomePage({
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Expenses Manually</DialogTitle>
+                <DialogTitle>Add Transactions Manually</DialogTitle>
                 <DialogDescription>
-                  Type your expenses in a single sentence. e.g., "Spent 10 on
-                  coffee and 150 for groceries"
+                  Type your transactions in a single sentence. e.g., "Received 1000 salary and spent 200 on groceries"
                 </DialogDescription>
               </DialogHeader>
               <Textarea
-                placeholder="Enter expenses here..."
+                placeholder="Enter transactions here..."
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
               />
               <DialogFooter>
-                <Button onClick={handleSaveTextExpense} disabled={isLoading}>
-                  {isLoading ? "Saving..." : "Save Expenses"}
+                <Button onClick={handleSaveTextTransaction} disabled={isLoading}>
+                  {isLoading ? "Saving..." : "Save Transactions"}
                 </Button>
               </DialogFooter>
             </DialogContent>

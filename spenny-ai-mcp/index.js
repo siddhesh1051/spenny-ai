@@ -106,9 +106,9 @@ class SpennyMCPServer {
       return {
         tools: [
           {
-            name: "get_expenses",
+            name: "get_transactions",
             description:
-              "Get your expenses with optional filters for date range, category, amount range, etc.",
+              "Get your transactions with optional filters for date range, category, amount range, etc.",
             inputSchema: {
               type: "object",
               properties: {
@@ -141,9 +141,9 @@ class SpennyMCPServer {
             },
           },
           {
-            name: "get_expense_summary",
+            name: "get_transaction_summary",
             description:
-              "Get your expense summary statistics for a time period",
+              "Get your transaction summary statistics for a time period",
             inputSchema: {
               type: "object",
               properties: {
@@ -165,8 +165,8 @@ class SpennyMCPServer {
             },
           },
           {
-            name: "get_monthly_expenses",
-            description: "Get your expenses for a specific month",
+            name: "get_monthly_transactions",
+            description: "Get your transactions for a specific month",
             inputSchema: {
               type: "object",
               properties: {
@@ -185,7 +185,7 @@ class SpennyMCPServer {
           {
             name: "get_category_breakdown",
             description:
-              "Get your expense breakdown by category for a time period",
+              "Get your transaction breakdown by category for a time period",
             inputSchema: {
               type: "object",
               properties: {
@@ -202,9 +202,9 @@ class SpennyMCPServer {
             },
           },
           {
-            name: "search_expenses",
+            name: "search_transactions",
             description:
-              "Search your expenses by description or other text fields",
+              "Search your transactions by description or other text fields",
             inputSchema: {
               type: "object",
               properties: {
@@ -284,16 +284,16 @@ class SpennyMCPServer {
         const argsWithUserId = { ...args, user_id };
 
         switch (name) {
-          case "get_expenses":
-            return await this.getExpenses(argsWithUserId);
-          case "get_expense_summary":
-            return await this.getExpenseSummary(argsWithUserId);
-          case "get_monthly_expenses":
-            return await this.getMonthlyExpenses(argsWithUserId);
+          case "get_transactions":
+            return await this.getTransactions(argsWithUserId);
+          case "get_transaction_summary":
+            return await this.getTransactionSummary(argsWithUserId);
+          case "get_monthly_transactions":
+            return await this.getMonthlyTransactions(argsWithUserId);
           case "get_category_breakdown":
             return await this.getCategoryBreakdown(argsWithUserId);
-          case "search_expenses":
-            return await this.searchExpenses(argsWithUserId);
+          case "search_transactions":
+            return await this.searchTransactions(argsWithUserId);
           case "get_spending_insights":
             return await this.getSpendingInsights(argsWithUserId);
           case "get_budget_analysis":
@@ -316,9 +316,9 @@ class SpennyMCPServer {
     });
   }
 
-  async getExpenses(args) {
+  async getTransactions(args) {
     let query = supabase
-      .from("expenses")
+      .from("transactions")
       .select("*")
       .eq("user_id", args.user_id) // Always filter by user_id
       .order("date", { ascending: false });
@@ -349,7 +349,7 @@ class SpennyMCPServer {
       throw new Error(`Supabase error: ${error.message}`);
     }
 
-    const totalAmount = data.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalAmount = data.reduce((sum, transaction) => sum + transaction.amount, 0);
 
     return {
       content: [
@@ -357,14 +357,14 @@ class SpennyMCPServer {
           type: "text",
           text: JSON.stringify(
             {
-              expenses: data,
+              transactions: data,
               count: data.length,
               total_amount: totalAmount,
               total_amount_formatted: formatINR(totalAmount),
               summary: {
-                average_expense:
+                average_transaction:
                   data.length > 0 ? totalAmount / data.length : 0,
-                average_expense_formatted:
+                average_transaction_formatted:
                   data.length > 0
                     ? formatINR(totalAmount / data.length)
                     : formatINR(0),
@@ -385,9 +385,9 @@ class SpennyMCPServer {
     };
   }
 
-  async getExpenseSummary(args) {
+  async getTransactionSummary(args) {
     let query = supabase
-      .from("expenses")
+      .from("transactions")
       .select("amount, category, date")
       .eq("user_id", args.user_id); // Always filter by user_id
 
@@ -404,31 +404,31 @@ class SpennyMCPServer {
       throw new Error(`Supabase error: ${error.message}`);
     }
 
-    const totalAmount = data.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalAmount = data.reduce((sum, transaction) => sum + transaction.amount, 0);
     const totalCount = data.length;
     const avgAmount = totalCount > 0 ? totalAmount / totalCount : 0;
 
     let groupedData = {};
     if (args.group_by === "category") {
-      groupedData = data.reduce((acc, expense) => {
-        const key = expense.category || "Uncategorized";
+      groupedData = data.reduce((acc, transaction) => {
+        const key = transaction.category || "Uncategorized";
         if (!acc[key]) {
           acc[key] = { amount: 0, count: 0 };
         }
-        acc[key].amount += expense.amount;
+        acc[key].amount += transaction.amount;
         acc[key].count += 1;
         return acc;
       }, {});
     } else if (args.group_by === "month") {
-      groupedData = data.reduce((acc, expense) => {
-        const date = new Date(expense.date);
+      groupedData = data.reduce((acc, transaction) => {
+        const date = new Date(transaction.date);
         const key = `${date.getFullYear()}-${String(
           date.getMonth() + 1
         ).padStart(2, "0")}`;
         if (!acc[key]) {
           acc[key] = { amount: 0, count: 0 };
         }
-        acc[key].amount += expense.amount;
+        acc[key].amount += transaction.amount;
         acc[key].count += 1;
         return acc;
       }, {});
@@ -477,7 +477,7 @@ class SpennyMCPServer {
     };
   }
 
-  async getMonthlyExpenses(args) {
+  async getMonthlyTransactions(args) {
     const now = new Date();
     const year = args.year || now.getFullYear();
     const month = args.month || now.getMonth() + 1;
@@ -488,7 +488,7 @@ class SpennyMCPServer {
     const endDate = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
 
     let query = supabase
-      .from("expenses")
+      .from("transactions")
       .select("*")
       .eq("user_id", args.user_id) // Always filter by user_id
       .gte("date", startDate)
@@ -501,7 +501,7 @@ class SpennyMCPServer {
       throw new Error(`Supabase error: ${error.message}`);
     }
 
-    const totalAmount = data.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalAmount = data.reduce((sum, transaction) => sum + transaction.amount, 0);
     const daysInMonth = new Date(year, month, 0).getDate();
 
     return {
@@ -515,20 +515,20 @@ class SpennyMCPServer {
                 "en-IN",
                 { month: "long", year: "numeric" }
               ),
-              expenses: data,
+              transactions: data,
               total_amount: totalAmount,
               total_amount_formatted: formatINR(totalAmount),
               count: data.length,
               daily_average: formatINR(totalAmount / daysInMonth),
-              top_expense:
+              top_transaction:
                 data.length > 0
                   ? {
-                      ...data.reduce((max, expense) =>
-                        expense.amount > max.amount ? expense : max
+                      ...data.reduce((max, transaction) =>
+                        transaction.amount > max.amount ? transaction : max
                       ),
                       amount_formatted: formatINR(
-                        data.reduce((max, expense) =>
-                          expense.amount > max.amount ? expense : max
+                        data.reduce((max, transaction) =>
+                          transaction.amount > max.amount ? transaction : max
                         ).amount
                       ),
                     }
@@ -544,7 +544,7 @@ class SpennyMCPServer {
 
   async getCategoryBreakdown(args) {
     let query = supabase
-      .from("expenses")
+      .from("transactions")
       .select("category, amount")
       .eq("user_id", args.user_id); // Always filter by user_id
 
@@ -561,12 +561,12 @@ class SpennyMCPServer {
       throw new Error(`Supabase error: ${error.message}`);
     }
 
-    const breakdown = data.reduce((acc, expense) => {
-      const category = expense.category || "Uncategorized";
+    const breakdown = data.reduce((acc, transaction) => {
+      const category = transaction.category || "Uncategorized";
       if (!acc[category]) {
         acc[category] = { amount: 0, count: 0 };
       }
-      acc[category].amount += expense.amount;
+      acc[category].amount += transaction.amount;
       acc[category].count += 1;
       return acc;
     }, {});
@@ -618,11 +618,11 @@ class SpennyMCPServer {
     };
   }
 
-  async searchExpenses(args) {
+  async searchTransactions(args) {
     const { search_term, limit = 20, user_id } = args;
 
     let query = supabase
-      .from("expenses")
+      .from("transactions")
       .select("*")
       .eq("user_id", user_id) // Always filter by user_id
       .ilike("description", `%${search_term}%`)
@@ -635,7 +635,7 @@ class SpennyMCPServer {
       throw new Error(`Supabase error: ${error.message}`);
     }
 
-    const totalAmount = data.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalAmount = data.reduce((sum, transaction) => sum + transaction.amount, 0);
 
     return {
       content: [
@@ -726,7 +726,7 @@ class SpennyMCPServer {
 
     // Get current period data
     let currentQuery = supabase
-      .from("expenses")
+      .from("transactions")
       .select("amount, category, date")
       .eq("user_id", args.user_id) // Always filter by user_id
       .gte("date", startDate)
@@ -742,7 +742,7 @@ class SpennyMCPServer {
     let compareData = [];
     if (args.include_trends) {
       let compareQuery = supabase
-        .from("expenses")
+        .from("transactions")
         .select("amount, category, date")
         .eq("user_id", args.user_id) // Always filter by user_id
         .gte("date", compareStartDate)
@@ -755,17 +755,17 @@ class SpennyMCPServer {
     }
 
     // Calculate insights
-    const currentTotal = currentData.reduce((sum, exp) => sum + exp.amount, 0);
-    const compareTotal = compareData.reduce((sum, exp) => sum + exp.amount, 0);
+    const currentTotal = currentData.reduce((sum, trans) => sum + trans.amount, 0);
+    const compareTotal = compareData.reduce((sum, trans) => sum + trans.amount, 0);
     const change =
       compareTotal > 0
         ? ((currentTotal - compareTotal) / compareTotal) * 100
         : 0;
 
     // Category analysis
-    const categoryTotals = currentData.reduce((acc, exp) => {
-      const cat = exp.category || "Uncategorized";
-      acc[cat] = (acc[cat] || 0) + exp.amount;
+    const categoryTotals = currentData.reduce((acc, trans) => {
+      const cat = trans.category || "Uncategorized";
+      acc[cat] = (acc[cat] || 0) + trans.amount;
       return acc;
     }, {});
 
@@ -774,11 +774,11 @@ class SpennyMCPServer {
     )[0];
 
     // Daily spending pattern
-    const dailySpending = currentData.reduce((acc, exp) => {
-      const day = new Date(exp.date).toLocaleDateString("en-IN", {
+    const dailySpending = currentData.reduce((acc, trans) => {
+      const day = new Date(trans.date).toLocaleDateString("en-IN", {
         weekday: "long",
       });
-      acc[day] = (acc[day] || 0) + exp.amount;
+      acc[day] = (acc[day] || 0) + trans.amount;
       return acc;
     }, {});
 
@@ -864,7 +864,7 @@ class SpennyMCPServer {
     const endDate = new Date().toISOString().split("T")[0];
 
     let query = supabase
-      .from("expenses")
+      .from("transactions")
       .select("amount, category, date")
       .eq("user_id", args.user_id) // Always filter by user_id
       .gte("date", startDate)
@@ -876,7 +876,7 @@ class SpennyMCPServer {
       throw new Error(`Supabase error: ${error.message}`);
     }
 
-    const totalSpent = data.reduce((sum, exp) => sum + exp.amount, 0);
+    const totalSpent = data.reduce((sum, trans) => sum + trans.amount, 0);
     const monthlyAverage = totalSpent / monthsToAnalyze;
 
     // Indian household budget recommendations (as percentages of income)
@@ -892,9 +892,9 @@ class SpennyMCPServer {
     };
 
     // Categorize expenses
-    const categorySpending = data.reduce((acc, exp) => {
-      const cat = exp.category || "Other";
-      acc[cat] = (acc[cat] || 0) + exp.amount;
+    const categorySpending = data.reduce((acc, trans) => {
+      const cat = trans.category || "Other";
+      acc[cat] = (acc[cat] || 0) + trans.amount;
       return acc;
     }, {});
 
@@ -988,7 +988,7 @@ class SpennyMCPServer {
     };
   }
 
-  getFrequentAmountRange(expenses) {
+  getFrequentAmountRange(transactions) {
     const ranges = {
       "Under ₹100": 0,
       "₹100-500": 0,
@@ -998,12 +998,12 @@ class SpennyMCPServer {
       "Above ₹5000": 0,
     };
 
-    expenses.forEach((exp) => {
-      if (exp.amount < 100) ranges["Under ₹100"]++;
-      else if (exp.amount < 500) ranges["₹100-500"]++;
-      else if (exp.amount < 1000) ranges["₹500-1000"]++;
-      else if (exp.amount < 2000) ranges["₹1000-2000"]++;
-      else if (exp.amount < 5000) ranges["₹2000-5000"]++;
+    transactions.forEach((trans) => {
+      if (trans.amount < 100) ranges["Under ₹100"]++;
+      else if (trans.amount < 500) ranges["₹100-500"]++;
+      else if (trans.amount < 1000) ranges["₹500-1000"]++;
+      else if (trans.amount < 2000) ranges["₹1000-2000"]++;
+      else if (trans.amount < 5000) ranges["₹2000-5000"]++;
       else ranges["Above ₹5000"]++;
     });
 

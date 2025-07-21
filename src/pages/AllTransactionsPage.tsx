@@ -37,12 +37,13 @@ const categories: { [key: string]: string } = {
   other: "🤷",
 };
 
-interface Expense {
+interface Transaction {
   id: string;
   amount: number;
   category: string;
   description: string;
   date: string;
+  type: 'credit' | 'debit';
 }
 
 export function AllTransactionsPage({
@@ -51,20 +52,20 @@ export function AllTransactionsPage({
   deleteExpense,
   updateExpense,
 }: {
-  expenses: Expense[];
+  expenses: Transaction[];
   isLoading: boolean;
   deleteExpense: (id: string) => Promise<void>;
-  updateExpense: (id: string, updatedFields: Partial<Expense>) => Promise<void>;
+  updateExpense: (id: string, updatedFields: Partial<Transaction>) => Promise<void>;
 }) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Transaction | null>(null);
 
   const totalExpense = expenses.reduce(
     (total, expense) => total + expense.amount,
     0
   );
 
-  const handleEditClick = (expense: Expense) => {
+  const handleEditClick = (expense: Transaction) => {
     setEditingExpense({ ...expense });
     setIsEditDialogOpen(true);
   };
@@ -190,9 +191,7 @@ export function AllTransactionsPage({
                           {expense.category}
                         </p>
                       </div>
-                      <p className="font-bold">
-                        ₹{expense.amount.toFixed(2)}
-                      </p>
+                      <p className={`font-bold ${expense.type === 'credit' ? 'text-emerald-600' : 'text-orange-600'}`}>₹{expense.amount.toFixed(2)}</p>
                     </div>
                     <div className="flex justify-between items-center mt-2">
                       <p className="text-xs text-muted-foreground">
@@ -245,9 +244,7 @@ export function AllTransactionsPage({
                         <TableCell>
                           {new Date(expense.date).toLocaleDateString()}
                         </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          ₹{expense.amount.toFixed(2)}
-                        </TableCell>
+                        <TableCell className={`text-right font-semibold ${expense.type === 'credit' ? 'text-emerald-600' : 'text-orange-600'}`}>₹{expense.amount.toFixed(2)}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="ghost"

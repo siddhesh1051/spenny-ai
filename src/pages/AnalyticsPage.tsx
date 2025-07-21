@@ -66,18 +66,19 @@ const CustomBarTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   return null;
 };
 
-interface Expense {
+interface Transaction {
   amount: number;
   category: string;
   description: string;
   date: string;
+  type: 'credit' | 'debit';
 }
 
 export function AnalyticsPage({
   expenses,
   isLoading,
 }: {
-  expenses: Expense[];
+  expenses: Transaction[];
   isLoading: boolean;
 }) {
   const { theme } = useTheme();
@@ -91,10 +92,10 @@ export function AnalyticsPage({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  const totalExpense = expenses.reduce(
-    (acc, expense) => acc + expense.amount,
-    0
-  );
+  const totalCredit = expenses.filter(t => t.type === 'credit').reduce((acc, t) => acc + t.amount, 0);
+  const totalDebit = expenses.filter(t => t.type === 'debit').reduce((acc, t) => acc + t.amount, 0);
+  const netBalance = totalCredit - totalDebit;
+
   const totalTransactions = expenses.length;
 
   const dailySpend = expenses.reduce((acc, expense) => {
@@ -120,7 +121,7 @@ export function AnalyticsPage({
 
   const averageDailySpend =
     Object.keys(dailySpend).length > 0
-      ? totalExpense / Object.keys(dailySpend).length
+      ? totalCredit / Object.keys(dailySpend).length
       : 0;
 
   const expenseDataForPieChart = Object.entries(
@@ -155,6 +156,20 @@ export function AnalyticsPage({
       <h1 className="text-2xl md:text-3xl font-bold mb-6">
         Analytics Dashboard
       </h1>
+      <div className="flex flex-wrap gap-4 mb-6">
+        <div className="bg-green-100 text-green-800 rounded-lg p-4 min-w-[180px] shadow">
+          <div className="text-sm font-medium">Total Credit</div>
+          <div className="text-2xl font-bold">₹{totalCredit.toLocaleString()}</div>
+        </div>
+        <div className="bg-red-100 text-red-800 rounded-lg p-4 min-w-[180px] shadow">
+          <div className="text-sm font-medium">Total Debit</div>
+          <div className="text-2xl font-bold">₹{totalDebit.toLocaleString()}</div>
+        </div>
+        <div className="bg-blue-100 text-blue-800 rounded-lg p-4 min-w-[180px] shadow">
+          <div className="text-sm font-medium">Net Balance</div>
+          <div className="text-2xl font-bold">₹{netBalance.toLocaleString()}</div>
+        </div>
+      </div>
       {expenses.length === 0 ? (
         isLoading ? (
           <div className="grid gap-4 md:gap-6">
@@ -209,7 +224,7 @@ export function AnalyticsPage({
               </CardHeader>
               <CardContent>
                 <p className="text-2xl md:text-3xl font-bold">
-                  ₹{totalExpense.toFixed(2)}
+                  ₹{totalCredit.toFixed(2)}
                 </p>
               </CardContent>
             </Card>
@@ -247,7 +262,7 @@ export function AnalyticsPage({
                       <span>₹{category.value.toFixed(2)}</span>
                     </div>
                     <Progress
-                      value={(category.value / totalExpense) * 100}
+                      value={(category.value / totalCredit) * 100}
                       className="h-2"
                     />
                   </div>

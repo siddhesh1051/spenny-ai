@@ -17,12 +17,13 @@ import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
 
-interface Expense {
+interface Transaction {
   id: string;
   amount: number;
   category: string;
   description: string;
   date: string;
+  type: 'credit' | 'debit'; // New field for transaction type
 }
 
 // Your server URL - UPDATE THIS!
@@ -75,7 +76,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +122,7 @@ function App() {
             });
 
             // Process the image
-            handleExpenseImage(file);
+            handleTransactionImage(file);
             toast.success("Image received! Processing with AI...");
           } else {
             console.error("❌ Failed to get shared file:", data.error);
@@ -168,11 +169,11 @@ function App() {
     try {
       setIsLoading(true);
       const { data, error } = await supabase
-        .from("expenses")
+        .from("transactions")
         .select("*")
         .order("date", { ascending: false });
       if (error) throw error;
-      setExpenses(data || []);
+      setTransactions(data || []);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -186,51 +187,49 @@ function App() {
     }
   }, [session]);
 
-  const addExpenses = async (newExpenses: Omit<Expense, "id">[]) => {
+  // In addExpenses (now addTransactions), ensure 'type' is included in all new transactions
+  const addTransactions = async (newTransactions: Omit<Transaction, "id">[]) => {
     if (!session) return;
     try {
-      console.log("💾 Adding expenses to database:", newExpenses);
-
-      const expensesWithDateAndUser = newExpenses.map((e) => ({
-        ...e,
-        date: e.date || new Date().toISOString(), // Use provided date or fallback
+      const transactionsWithDateAndUser = newTransactions.map((t) => ({
+        ...t,
+        date: t.date || new Date().toISOString(),
         user_id: session.user.id,
+        type: t.type || 'debit', // Default to 'debit' if not present, but should always be set by AI
       }));
       const { data, error } = await supabase
-        .from("expenses")
-        .insert(expensesWithDateAndUser)
+        .from("transactions")
+        .insert(transactionsWithDateAndUser)
         .select();
       if (error) throw error;
-      setExpenses((prevExpenses) => [...data, ...prevExpenses]);
-      toast.success(`Added ${data.length} expense(s) from document!`);
-      console.log("✅ Expenses added successfully:", data);
+      setTransactions((prev) => [...data, ...prev]);
+      toast.success(`Added ${data.length} transaction(s) from document!`);
     } catch (error: unknown) {
-      console.error("❌ Failed to add expenses:", error);
       setError(error instanceof Error ? error.message : String(error));
-      toast.error("Failed to save expenses");
+      toast.error("Failed to save transactions");
     }
   };
 
   const deleteExpense = async (id: string) => {
     try {
-      const { error } = await supabase.from("expenses").delete().eq("id", id);
+      const { error } = await supabase.from("transactions").delete().eq("id", id);
       if (error) throw error;
-      setExpenses(expenses.filter((e) => e.id !== id));
+      setTransactions(transactions.filter((e) => e.id !== id));
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : String(error));
     }
   };
 
-  const updateExpense = async (id: string, updatedFields: Partial<Expense>) => {
+  const updateExpense = async (id: string, updatedFields: Partial<Transaction>) => {
     try {
       const { data, error } = await supabase
-        .from("expenses")
+        .from("transactions")
         .update(updatedFields)
         .eq("id", id)
         .select()
         .single();
       if (error) throw error;
-      setExpenses(expenses.map((e) => (e.id === id ? data : e)));
+      setTransactions(transactions.map((e) => (e.id === id ? data : e)));
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : String(error));
     }
@@ -345,7 +344,7 @@ function App() {
             }
             
             if (bestTranscript && bestTranscript.trim().length > 0) {
-              getStructuredExpenses(bestTranscript);
+              getStructuredTransactions(bestTranscript);
             } else {
               setError("No speech detected. Please try again.");
             }
@@ -368,7 +367,7 @@ function App() {
     }
   };
 
-  const getStructuredExpenses = async (text: string) => {
+  const getStructuredTransactions = async (text: string) => {
     const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       setError("Gemini API key is not set. Please check your settings.");
@@ -391,57 +390,7 @@ function App() {
               {
                 parts: [
                   {
-                    text: `You are an AI that extracts structured expense data from natural language input. 
-
-IMPORTANT: Extract ALL expenses mentioned in the text, even if multiple expenses are mentioned in a single sentence.
-
-For the input: '${text}'
-
-Return a JSON array of objects with this exact format:
-[
-  {
-    "amount": number,
-    "category": string,
-    "description": string
-  }
-]
-
-CATEGORY RULES:
-- Use only these categories: food, travel, groceries, entertainment, utilities, rent, other
-- food: restaurants, cafes, fast food, dining out
-- groceries: supermarket, grocery store, fresh food, household items
-- travel: transportation, fuel, parking, public transport, flights, hotels
-- entertainment: movies, games, hobbies, sports, concerts
-- utilities: electricity, water, gas, internet, phone bills
-- rent: housing rent, accommodation
-- other: anything that doesn't fit above categories
-
-DESCRIPTION RULES:
-- Keep descriptions short and clean (max 50 characters)
-- Extract the main item/service name
-- Remove unnecessary words like "spent", "bought", "paid"
-
-EXAMPLES:
-Input: "spent 10 on coffee and 150 for groceries"
-Output: [
-  {"amount": 10, "category": "food", "description": "Coffee"},
-  {"amount": 150, "category": "groceries", "description": "Groceries"}
-]
-
-Input: "bought lunch for 25 dollars, paid 50 for gas, and spent 15 on parking"
-Output: [
-  {"amount": 25, "category": "food", "description": "Lunch"},
-  {"amount": 50, "category": "travel", "description": "Gas"},
-  {"amount": 15, "category": "travel", "description": "Parking"}
-]
-
-Input: "paid 100 for electricity bill and 80 for internet"
-Output: [
-  {"amount": 100, "category": "utilities", "description": "Electricity"},
-  {"amount": 80, "category": "utilities", "description": "Internet"}
-]
-
-Please extract all expenses from: '${text}'`
+                    text: `You are an AI that extracts structured transaction data (both credits and debits) from natural language input.\n\nIMPORTANT: Extract ALL transactions mentioned in the text, even if multiple are mentioned in a single sentence.\n\nFor the input: '${text}'\n\nReturn a JSON array of objects with this exact format:\n[\n  {\n    "amount": number,\n    "category": string,\n    "description": string,\n    "type": "credit" | "debit"\n  }\n]\n\nCATEGORY RULES:\n- Use only these categories: salary, refund, deposit, food, travel, groceries, entertainment, utilities, rent, other\n- salary: salary, pay, income\n- refund: refunds, returns\n- deposit: money added, transfers in\n- food: restaurants, cafes, fast food, dining out\n- groceries: supermarket, grocery store, fresh food, household items\n- travel: transportation, fuel, parking, public transport, flights, hotels\n- entertainment: movies, games, hobbies, sports, concerts\n- utilities: electricity, water, gas, internet, phone bills\n- rent: housing rent, accommodation\n- other: anything that doesn't fit above categories\n\nDESCRIPTION RULES:\n- Keep descriptions short and clean (max 50 characters)\n- Extract the main item/service name\n- Remove unnecessary words like "spent", "bought", "paid", "received"\n\nTYPE RULES:\n- If money is coming IN (salary, refund, deposit, etc.), type is "credit"\n- If money is going OUT (purchase, payment, withdrawal, etc.), type is "debit"\n\nEXAMPLES:\nInput: "received 1000 salary and spent 200 on groceries"\nOutput: [\n  {"amount": 1000, "category": "salary", "description": "Salary", "type": "credit"},\n  {"amount": 200, "category": "groceries", "description": "Groceries", "type": "debit"}\n]\n\nInput: "got 500 refund and paid 100 for electricity"\nOutput: [\n  {"amount": 500, "category": "refund", "description": "Refund", "type": "credit"},\n  {"amount": 100, "category": "utilities", "description": "Electricity", "type": "debit"}\n]\n\nPlease extract all transactions from: '${text}'`
                   },
                 ],
               },
@@ -464,21 +413,14 @@ Please extract all expenses from: '${text}'`
           .replace(/```/g, "")
           .trim();
         
-        const structuredExpenses = JSON.parse(cleanedJson);
+        const structuredTransactions = JSON.parse(cleanedJson);
         
         // Validate the expenses before adding
-        if (Array.isArray(structuredExpenses) && structuredExpenses.length > 0) {
-          const validExpenses = structuredExpenses.filter(expense => 
-            expense && 
-            typeof expense.amount === 'number' && 
-            expense.amount > 0 &&
-            typeof expense.category === 'string' &&
-            typeof expense.description === 'string' &&
-            expense.description.trim().length > 0
-          );
+        if (Array.isArray(structuredTransactions) && structuredTransactions.length > 0) {
+          const validTransactions = structuredTransactions.filter((t: any) => t.type === 'credit' || t.type === 'debit');
           
-          if (validExpenses.length > 0) {
-            addExpenses(validExpenses);
+          if (validTransactions.length > 0) {
+            await addTransactions(validTransactions);
           } else {
             setError("No valid expenses could be extracted from your speech.");
           }
@@ -549,7 +491,10 @@ Please extract all expenses from: '${text}'`
         const structuredExpenses = JSON.parse(cleanedJson);
         console.log("📊 Parsed expenses:", structuredExpenses);
 
-        addExpenses(structuredExpenses);
+        // Fix linter error: ensure all calls to addTransactions pass objects with a 'type' field
+        // In getStructuredExpensesFromImage, map/validate the AI output to ensure 'type' is present, and filter out any without it
+        const validExpenses = structuredExpenses.filter((expense: any) => expense.type === 'credit' || expense.type === 'debit');
+        await addTransactions(validExpenses);
       } else {
         console.log("❌ No candidates in Gemini response");
         setError("Could not extract expenses from the image.");
@@ -561,7 +506,7 @@ Please extract all expenses from: '${text}'`
     setIsLoading(false);
   };
 
-  const handleExpenseImage = (file: File) => {
+  const handleTransactionImage = (file: File) => {
     console.log(
       "📷 Processing expense image:",
       file.name,
@@ -737,7 +682,7 @@ Please extract all expenses from: '${text}'`
             }));
 
           if (validExpenses.length > 0) {
-            await addExpenses(validExpenses);
+            await addTransactions(validExpenses);
             toast.success(
               `Successfully extracted ${validExpenses.length} expense transactions from bank statement!`
             );
@@ -974,8 +919,8 @@ Please extract all expenses from: '${text}'`
                   isRecording={isRecording}
                   isLoading={isLoading}
                   handleMicClick={handleMicClick}
-                  getStructuredExpenses={getStructuredExpenses}
-                  handleExpenseImage={handleExpenseImage}
+                  getStructuredTransactions={getStructuredTransactions}
+                  handleTransactionImage={handleTransactionImage}
                   handlePDFUpload={handlePDFUpload}
                 />
               }
@@ -983,14 +928,14 @@ Please extract all expenses from: '${text}'`
             <Route
               path="/analytics"
               element={
-                <AnalyticsPage expenses={expenses} isLoading={isLoading} />
+                <AnalyticsPage expenses={transactions} isLoading={isLoading} />
               }
             />
             <Route
               path="/transactions"
               element={
                 <AllTransactionsPage
-                  expenses={expenses}
+                  expenses={transactions}
                   isLoading={isLoading}
                   deleteExpense={deleteExpense}
                   updateExpense={updateExpense}
@@ -1002,7 +947,7 @@ Please extract all expenses from: '${text}'`
             <Route
               path="/share-target"
               element={
-                <ShareTargetPage handleExpenseImage={handleExpenseImage} />
+                <ShareTargetPage handleTransactionImage={handleTransactionImage} />
               }
             />
           </Routes>

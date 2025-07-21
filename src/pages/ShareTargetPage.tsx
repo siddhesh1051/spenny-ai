@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 interface ShareTargetPageProps {
-  handleExpenseImage: (file: File) => void;
+  handleTransactionImage: (file: File) => void;
 }
 
 // Helper to read the latest shared image from IndexedDB
@@ -23,7 +23,7 @@ async function getLatestSharedImage(): Promise<File | null> {
 }
 
 const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
-  handleExpenseImage,
+  handleTransactionImage,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -46,7 +46,7 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
             setFileName(file.name);
             const url = URL.createObjectURL(file);
             setImageUrl(url);
-            handleExpenseImage(file);
+            handleTransactionImage(file);
             didRun = true;
           });
           return;
@@ -67,7 +67,7 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
             setFileName(file.name);
             const url = URL.createObjectURL(file);
             setImageUrl(url);
-            handleExpenseImage(file);
+            handleTransactionImage(file);
             didRun = true;
             return;
           }
@@ -83,7 +83,7 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
             setFileName(file.name);
             const url = URL.createObjectURL(file);
             setImageUrl(url);
-            handleExpenseImage(file);
+            handleTransactionImage(file);
             didRun = true;
             return;
           }
@@ -95,7 +95,7 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
             setFileName(file.name);
             const url = URL.createObjectURL(file);
             setImageUrl(url);
-            handleExpenseImage(file);
+            handleTransactionImage(file);
             return;
           } else {
             setError("No image file was shared.");
@@ -105,7 +105,7 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
         setError("Failed to process shared image.");
       }
     })();
-  }, [handleExpenseImage]);
+  }, [handleTransactionImage]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
