@@ -16,6 +16,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
+import { GoogleGenAI } from "@google/genai";
 
 interface Expense {
   id: string;
@@ -27,6 +28,115 @@ interface Expense {
 
 // Your server URL - UPDATE THIS!
 const SERVER_URL = "https://spenny-ai.onrender.com";
+
+// Helper function to call Gemini API using SDK with retry logic for rate limits
+async function callGeminiAPI(
+  apiKey: string,
+  contents: any[],
+  maxRetries: number = 3
+): Promise<any> {
+  // Using gemini-2.0-flash (the model that was working, just had quota issues)
+  const modelName = "gemini-2.5-flash";
+
+  // Initialize the Gemini API client
+  const ai = new GoogleGenAI({ apiKey });
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Transform contents to new SDK format
+      // The new SDK expects contents as an array of content objects with parts
+      const sdkContents: any[] = [];
+
+      for (const content of contents) {
+        if (content.parts) {
+          const parts: any[] = [];
+          for (const part of content.parts) {
+            if (part.text) {
+              parts.push({ text: part.text });
+            } else if (part.inlineData) {
+              parts.push({
+                inlineData: {
+                  mimeType: part.inlineData.mimeType,
+                  data: part.inlineData.data,
+                },
+              });
+            }
+          }
+          if (parts.length > 0) {
+            sdkContents.push({ parts });
+          }
+        }
+      }
+
+      // The new SDK's generateContent expects { model, contents }
+      const result = await ai.models.generateContent({
+        model: modelName,
+        contents: sdkContents,
+      });
+
+      const text = result.text;
+
+      // Return in the same format as before for compatibility
+      return {
+        candidates: [
+          {
+            content: {
+              parts: [{ text }],
+            },
+          },
+        ],
+      };
+    } catch (error: any) {
+      // Handle rate limit errors (429)
+      if (
+        error.status === 429 ||
+        error.code === 429 ||
+        error.message?.includes("429") ||
+        error.message?.includes("quota") ||
+        error.message?.includes("rate limit")
+      ) {
+        const delayMs = 15000 * (attempt + 1); // Exponential backoff: 15s, 30s, 45s
+
+        if (attempt < maxRetries - 1) {
+          console.log(
+            `⏳ Rate limit exceeded. Retrying in ${
+              delayMs / 1000
+            } seconds... (attempt ${attempt + 1}/${maxRetries})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        } else {
+          throw new Error(
+            `Rate limit exceeded. Please wait and try again. If this persists, your API key may have reached its free tier quota limit. Consider upgrading your Google AI Studio plan or wait for the quota to reset.`
+          );
+        }
+      }
+
+      // Handle quota exhausted errors
+      if (
+        error.status === "RESOURCE_EXHAUSTED" ||
+        error.message?.includes("RESOURCE_EXHAUSTED") ||
+        error.message?.includes("quota exceeded")
+      ) {
+        throw new Error(
+          `Quota exceeded: ${
+            error.message || "Your API key has reached its free tier limit"
+          }. Please check your plan at https://ai.dev/usage?tab=rate-limit or wait for the quota to reset.`
+        );
+      }
+
+      // If it's the last attempt or not a retryable error, throw
+      if (attempt === maxRetries - 1) {
+        throw new Error(`Gemini API error: ${error.message || String(error)}`);
+      }
+
+      // For other errors, wait a bit and retry
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+
+  throw new Error("Failed to call Gemini API after multiple retries");
+}
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -236,13 +346,14 @@ function App() {
     }
   };
 
-
   const handleMicClick = () => {
     // Check browser support
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.");
+      setError(
+        "Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari."
+      );
       return;
     }
 
@@ -253,29 +364,37 @@ function App() {
     }
 
     // Check HTTPS requirement (except for localhost)
-    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-      setError("Speech recognition requires HTTPS. Please use a secure connection.");
+    if (
+      window.location.protocol !== "https:" &&
+      window.location.hostname !== "localhost"
+    ) {
+      setError(
+        "Speech recognition requires HTTPS. Please use a secure connection."
+      );
       return;
     }
 
     // Check microphone permission first
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
       .then((stream) => {
-        stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately
+        stream.getTracks().forEach((track) => track.stop()); // Stop the stream immediately
         startSpeechRecognition();
       })
       .catch((error) => {
         console.error("❌ Microphone permission denied:", error);
-        setError("Microphone permission is required. Please allow microphone access and try again.");
+        setError(
+          "Microphone permission is required. Please allow microphone access and try again."
+        );
       });
   };
 
   const startSpeechRecognition = () => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-    
+
     const recognition = new SpeechRecognition();
-    
+
     // Configure recognition settings for multiple expenses
     recognition.lang = "en-US";
     recognition.interimResults = false;
@@ -294,22 +413,24 @@ function App() {
 
     recognition.onerror = (event: any) => {
       setIsRecording(false);
-      
+
       let errorMessage = "Speech recognition error";
       switch (event.error) {
-        case 'not-allowed':
-          errorMessage = "Microphone access denied. Please allow microphone access.";
+        case "not-allowed":
+          errorMessage =
+            "Microphone access denied. Please allow microphone access.";
           break;
-        case 'no-speech':
+        case "no-speech":
           errorMessage = "No speech detected. Please speak clearly.";
           break;
-        case 'audio-capture':
+        case "audio-capture":
           errorMessage = "Audio capture failed. Please check your microphone.";
           break;
-        case 'network':
-          errorMessage = "Network error. Please check your internet connection.";
+        case "network":
+          errorMessage =
+            "Network error. Please check your internet connection.";
           break;
-        case 'service-not-allowed':
+        case "service-not-allowed":
           errorMessage = "Speech recognition service not allowed.";
           break;
         default:
@@ -328,22 +449,22 @@ function App() {
         // Check if we have results
         if (event.results && event.results.length > 0) {
           const result = event.results[0]; // Get first result
-          
+
           if (result.length > 0) {
             // Get the best transcript (highest confidence)
             let bestTranscript = "";
             let bestConfidence = 0;
-            
+
             for (let i = 0; i < result.length; i++) {
               const transcript = result[i].transcript;
               const confidence = result[i].confidence || 0;
-              
+
               if (confidence > bestConfidence) {
                 bestConfidence = confidence;
                 bestTranscript = transcript;
               }
             }
-            
+
             if (bestTranscript && bestTranscript.trim().length > 0) {
               getStructuredExpenses(bestTranscript);
             } else {
@@ -374,24 +495,16 @@ function App() {
       setError("Gemini API key is not set. Please check your settings.");
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      const contents = [
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `You are an AI that extracts structured expense data from natural language input. 
+          parts: [
+            {
+              text: `You are an AI that extracts structured expense data from natural language input. 
 
 IMPORTANT: Extract ALL expenses mentioned in the text, even if multiple expenses are mentioned in a single sentence.
 
@@ -441,42 +554,39 @@ Output: [
   {"amount": 80, "category": "utilities", "description": "Internet"}
 ]
 
-Please extract all expenses from: '${text}'`
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      );
+Please extract all expenses from: '${text}'`,
+            },
+          ],
+        },
+      ];
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      const data = await callGeminiAPI(apiKey, contents);
 
-      const data = await response.json();
-      
       if (data.candidates && data.candidates.length > 0) {
         const responseText = data.candidates[0].content.parts[0].text;
-        
+
         const cleanedJson = responseText
           .replace(/```json/g, "")
           .replace(/```/g, "")
           .trim();
-        
+
         const structuredExpenses = JSON.parse(cleanedJson);
-        
+
         // Validate the expenses before adding
-        if (Array.isArray(structuredExpenses) && structuredExpenses.length > 0) {
-          const validExpenses = structuredExpenses.filter(expense => 
-            expense && 
-            typeof expense.amount === 'number' && 
-            expense.amount > 0 &&
-            typeof expense.category === 'string' &&
-            typeof expense.description === 'string' &&
-            expense.description.trim().length > 0
+        if (
+          Array.isArray(structuredExpenses) &&
+          structuredExpenses.length > 0
+        ) {
+          const validExpenses = structuredExpenses.filter(
+            (expense) =>
+              expense &&
+              typeof expense.amount === "number" &&
+              expense.amount > 0 &&
+              typeof expense.category === "string" &&
+              typeof expense.description === "string" &&
+              expense.description.trim().length > 0
           );
-          
+
           if (validExpenses.length > 0) {
             addExpenses(validExpenses);
           } else {
@@ -489,9 +599,20 @@ Please extract all expenses from: '${text}'`
         setError("Could not extract expenses from the provided text.");
       }
     } catch (error: unknown) {
-      setError(`Error processing speech: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setError(errorMessage);
+      if (
+        errorMessage.includes("quota") ||
+        errorMessage.includes("Quota") ||
+        errorMessage.includes("rate limit")
+      ) {
+        toast.error(
+          "API quota exceeded. Please check your Google AI Studio plan or wait for quota reset."
+        );
+      }
     }
-    
+
     setIsLoading(false);
   };
 
@@ -509,32 +630,23 @@ Please extract all expenses from: '${text}'`
     try {
       console.log("🤖 Calling Gemini API for image analysis...");
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      const contents = [
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: "You are an AI that extracts structured expense data from an image of an order history, receipt, or bill. From the attached image, return a JSON array of {amount, category, description}. Make sure the category is one of the following: food, travel, groceries, entertainment, utilities, rent, other. Extract all visible expenses/items from the image.",
-                  },
-                  {
-                    inlineData: {
-                      mimeType: mimeType,
-                      data: base64Image,
-                    },
-                  },
-                ],
+          parts: [
+            {
+              text: "You are an AI that extracts structured expense data from an image of an order history, receipt, or bill. From the attached image, return a JSON array of {amount, category, description}. Make sure the category is one of the following: food, travel, groceries, entertainment, utilities, rent, other. Extract all visible expenses/items from the image.",
+            },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Image,
               },
-            ],
-          }),
-        }
-      );
+            },
+          ],
+        },
+      ];
 
-      const data = await response.json();
+      const data = await callGeminiAPI(apiKey, contents);
       console.log("🤖 Gemini API response:", data);
 
       if (data.candidates && data.candidates.length > 0) {
@@ -556,7 +668,18 @@ Please extract all expenses from: '${text}'`
       }
     } catch (error: unknown) {
       console.error("❌ Error in Gemini API call:", error);
-      setError("Error getting structured expenses from image.");
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setError(errorMessage || "Error getting structured expenses from image.");
+      if (
+        errorMessage.includes("quota") ||
+        errorMessage.includes("Quota") ||
+        errorMessage.includes("rate limit")
+      ) {
+        toast.error(
+          "API quota exceeded. Please check your Google AI Studio plan or wait for quota reset."
+        );
+      }
     }
     setIsLoading(false);
   };
@@ -670,32 +793,23 @@ Please extract all expenses from: '${text}'`
     try {
       console.log("🤖 Calling Gemini Vision API for PDF analysis...");
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      const contents = [
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `You are an AI that extracts structured expense data from a bank statement PDF. \n\nIMPORTANT INSTRUCTIONS:\n1. Only extract DEBIT transactions (money going OUT of the account)\n2. Skip CREDIT transactions (money coming IN like salary, deposits, refunds)\n3. Skip internal transfers between accounts\n4. Focus on actual purchases and payments that represent expenses\n5. For each expense, determine the most appropriate category from: food, travel, groceries, entertainment, utilities, rent, other\n6. Create SHORT, CLEAN descriptions (max 50 characters) - extract the merchant name or main purpose\n7. Return a JSON array of {amount, category, description, date} where date is the transaction date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ)\n8. If no expense transactions found, return an empty array []\n\nDESCRIPTION RULES:\n- Keep descriptions SHORT and CLEAN (under 50 characters)\n- Extract merchant/business name only (e.g., "Starbucks", "Amazon", "Uber")\n- Remove transaction IDs, reference numbers, timestamps\n- Remove unnecessary words like "PURCHASE", "PAYMENT", "DEBIT"\n- For ATM: use "ATM Withdrawal" \n- For online: use just the merchant name\n- For bills: use service name (e.g., "Electric Bill", "Internet Bill")\n\nExamples of GOOD descriptions:\n- "Starbucks Coffee"\n- "Amazon Purchase"\n- "Uber Ride"\n- "ATM Withdrawal"\n- "Electric Bill"\n- "Grocery Store"\n\nExamples of BAD descriptions (avoid these):\n- "DEBIT CARD PURCHASE 12345 STARBUCKS STORE #1234 NEW YORK NY"\n- "ELECTRONIC WITHDRAWAL 567890 AMAZON.COM AMZN.COM/BILL WA"\n\nExamples of what TO extract:\n- ATM withdrawals\n- Card payments to merchants  \n- Online purchases\n- Bill payments (utilities, rent, etc.)\n- Restaurant/food purchases\n- Shopping transactions\n\nExamples of what NOT to extract:\n- Salary deposits\n- Interest earned\n- Refunds received\n- Transfers from savings\n- Bank fees\n- Account opening bonuses\n\nPlease analyze this bank statement PDF and extract only expense transactions with clean, short descriptions, and include the transaction date for each expense as an ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ):`,
-                  },
-                  {
-                    inlineData: {
-                      mimeType: "application/pdf",
-                      data: base64Pdf,
-                    },
-                  },
-                ],
+          parts: [
+            {
+              text: `You are an AI that extracts structured expense data from a bank statement PDF. \n\nIMPORTANT INSTRUCTIONS:\n1. Only extract DEBIT transactions (money going OUT of the account)\n2. Skip CREDIT transactions (money coming IN like salary, deposits, refunds)\n3. Skip internal transfers between accounts\n4. Focus on actual purchases and payments that represent expenses\n5. For each expense, determine the most appropriate category from: food, travel, groceries, entertainment, utilities, rent, other\n6. Create SHORT, CLEAN descriptions (max 50 characters) - extract the merchant name or main purpose\n7. Return a JSON array of {amount, category, description, date} where date is the transaction date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ)\n8. If no expense transactions found, return an empty array []\n\nDESCRIPTION RULES:\n- Keep descriptions SHORT and CLEAN (under 50 characters)\n- Extract merchant/business name only (e.g., "Starbucks", "Amazon", "Uber")\n- Remove transaction IDs, reference numbers, timestamps\n- Remove unnecessary words like "PURCHASE", "PAYMENT", "DEBIT"\n- For ATM: use "ATM Withdrawal" \n- For online: use just the merchant name\n- For bills: use service name (e.g., "Electric Bill", "Internet Bill")\n\nExamples of GOOD descriptions:\n- "Starbucks Coffee"\n- "Amazon Purchase"\n- "Uber Ride"\n- "ATM Withdrawal"\n- "Electric Bill"\n- "Grocery Store"\n\nExamples of BAD descriptions (avoid these):\n- "DEBIT CARD PURCHASE 12345 STARBUCKS STORE #1234 NEW YORK NY"\n- "ELECTRONIC WITHDRAWAL 567890 AMAZON.COM AMZN.COM/BILL WA"\n\nExamples of what TO extract:\n- ATM withdrawals\n- Card payments to merchants  \n- Online purchases\n- Bill payments (utilities, rent, etc.)\n- Restaurant/food purchases\n- Shopping transactions\n\nExamples of what NOT to extract:\n- Salary deposits\n- Interest earned\n- Refunds received\n- Transfers from savings\n- Bank fees\n- Account opening bonuses\n\nPlease analyze this bank statement PDF and extract only expense transactions with clean, short descriptions, and include the transaction date for each expense as an ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ):`,
+            },
+            {
+              inlineData: {
+                mimeType: "application/pdf",
+                data: base64Pdf,
               },
-            ],
-          }),
-        }
-      );
+            },
+          ],
+        },
+      ];
 
-      const data = await response.json();
+      const data = await callGeminiAPI(apiKey, contents);
       console.log("🤖 Gemini Vision API response:", data);
 
       if (data.candidates && data.candidates.length > 0) {
@@ -757,12 +871,26 @@ Please extract all expenses from: '${text}'`
       }
     } catch (error: unknown) {
       console.error("❌ Error in Gemini Vision API call:", error);
-      if (error instanceof Error && error.message.includes("JSON")) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("JSON")) {
         toast.error(
           "Could not parse bank statement data. Please ensure this is a proper bank statement PDF."
         );
+        setError("Error parsing bank statement data.");
       } else {
-        setError("Error processing bank statement PDF with AI.");
+        setError(
+          errorMessage || "Error processing bank statement PDF with AI."
+        );
+        if (
+          errorMessage.includes("quota") ||
+          errorMessage.includes("Quota") ||
+          errorMessage.includes("rate limit")
+        ) {
+          toast.error(
+            "API quota exceeded. Please check your Google AI Studio plan or wait for quota reset."
+          );
+        }
       }
     }
   };
