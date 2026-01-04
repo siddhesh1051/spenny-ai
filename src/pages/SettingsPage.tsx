@@ -17,7 +17,7 @@ import ApiKeysManagement from "../components/ApiKeysManagement";
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [fullName, setFullName] = useState("");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [groqApiKey, setGroqApiKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -41,7 +41,7 @@ export default function SettingsPage() {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select(`full_name, gemini_api_key`)
+        .select(`full_name, groq_api_key`)
         .eq("id", user.id)
         .single();
 
@@ -51,7 +51,7 @@ export default function SettingsPage() {
       }
       if (data) {
         setFullName(data.full_name || "");
-        setGeminiApiKey(data.gemini_api_key || "");
+        setGroqApiKey(data.groq_api_key || "");
       }
     } catch (error: any) {
       console.error("Error fetching profile:", error.message);
@@ -67,7 +67,7 @@ export default function SettingsPage() {
       const updates = {
         id: user.id,
         full_name: fullName,
-        gemini_api_key: geminiApiKey,
+        groq_api_key: groqApiKey,
         updated_at: new Date(),
       };
       // update the profile table
@@ -134,23 +134,23 @@ export default function SettingsPage() {
           />
         </div>
         <div>
-          <label htmlFor="geminiApiKey">Gemini API Key</label>
+          <label htmlFor="groqApiKey">Groq API Key</label>
           <Input
-            id="geminiApiKey"
+            id="groqApiKey"
             type="password"
-            value={geminiApiKey}
-            onChange={(e) => setGeminiApiKey(e.target.value)}
-            placeholder="Enter your Gemini API Key"
+            value={groqApiKey}
+            onChange={(e) => setGroqApiKey(e.target.value)}
+            placeholder="Enter your Groq API Key"
           />
           <p className="text-sm text-muted-foreground mt-1">
             Get your API key from{" "}
             <a
-              href="https://aistudio.google.com/app/apikey"
+              href="https://console.groq.com/keys"
               target="_blank"
               rel="noopener noreferrer"
               className="underline"
             >
-              Google AI Studio
+              Groq Console
             </a>
             . Your key is stored securely and only used by you.
           </p>

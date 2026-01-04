@@ -86,7 +86,7 @@ export default function AuthPage() {
               options: {
                 data: {
                   full_name: email,
-                  gemini_api_key: "",
+                  groq_api_key: "",
                 },
               },
             });
