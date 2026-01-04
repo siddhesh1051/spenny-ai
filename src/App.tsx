@@ -16,7 +16,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 interface Expense {
   id: string;
@@ -29,52 +29,78 @@ interface Expense {
 // Your server URL - UPDATE THIS!
 const SERVER_URL = "https://spenny-ai.onrender.com";
 
-// Helper function to call Gemini API using SDK with retry logic for rate limits
-async function callGeminiAPI(
+// Helper function to call Groq API using SDK with retry logic for rate limits
+async function callGroqAPI(
   apiKey: string,
   contents: any[],
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  useVision: boolean = false
 ): Promise<any> {
-  // Using gemini-2.0-flash (the model that was working, just had quota issues)
-  const modelName = "gemini-2.5-flash";
+  // Using llama-3.1-8b-instant (lowest cost model for free tier)
+  // For vision tasks, use llama-3.2-11b-vision-preview
+  const modelName = useVision
+    ? "llama-3.2-11b-vision-preview"
+    : "llama-3.1-8b-instant";
 
-  // Initialize the Gemini API client
-  const ai = new GoogleGenAI({ apiKey });
+  // Initialize the Groq API client
+  // Note: dangerouslyAllowBrowser is required for browser environments
+  // The API key is stored securely per user and only used client-side
+  const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Transform contents to new SDK format
-      // The new SDK expects contents as an array of content objects with parts
-      const sdkContents: any[] = [];
+      // Transform contents to Groq SDK format
+      // Groq uses OpenAI-compatible format with messages array
+      const messages: any[] = [];
+      let systemMessage = "";
+      let imageContent: any[] = [];
 
       for (const content of contents) {
         if (content.parts) {
-          const parts: any[] = [];
           for (const part of content.parts) {
             if (part.text) {
-              parts.push({ text: part.text });
+              // First text part is usually the system/user message
+              if (!systemMessage) {
+                systemMessage = part.text;
+              } else {
+                systemMessage += "\n" + part.text;
+              }
             } else if (part.inlineData) {
-              parts.push({
-                inlineData: {
-                  mimeType: part.inlineData.mimeType,
-                  data: part.inlineData.data,
+              // Handle image data
+              imageContent.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
                 },
               });
             }
           }
-          if (parts.length > 0) {
-            sdkContents.push({ parts });
-          }
         }
       }
 
-      // The new SDK's generateContent expects { model, contents }
-      const result = await ai.models.generateContent({
+      // Build messages array
+      if (imageContent.length > 0) {
+        // Vision model requires content array with text and images
+        messages.push({
+          role: "user",
+          content: [{ type: "text", text: systemMessage }, ...imageContent],
+        });
+      } else {
+        // Text-only model
+        messages.push({
+          role: "user",
+          content: systemMessage,
+        });
+      }
+
+      // Call Groq API
+      const completion = await groq.chat.completions.create({
         model: modelName,
-        contents: sdkContents,
+        messages: messages,
+        temperature: 0.7,
       });
 
-      const text = result.text;
+      const text = completion.choices[0]?.message?.content || "";
 
       // Return in the same format as before for compatibility
       return {
@@ -91,6 +117,7 @@ async function callGeminiAPI(
       if (
         error.status === 429 ||
         error.code === 429 ||
+        error.statusCode === 429 ||
         error.message?.includes("429") ||
         error.message?.includes("quota") ||
         error.message?.includes("rate limit")
@@ -107,7 +134,7 @@ async function callGeminiAPI(
           continue;
         } else {
           throw new Error(
-            `Rate limit exceeded. Please wait and try again. If this persists, your API key may have reached its free tier quota limit. Consider upgrading your Google AI Studio plan or wait for the quota to reset.`
+            `Rate limit exceeded. Please wait and try again. If this persists, your API key may have reached its free tier quota limit.`
           );
         }
       }
@@ -115,19 +142,20 @@ async function callGeminiAPI(
       // Handle quota exhausted errors
       if (
         error.status === "RESOURCE_EXHAUSTED" ||
+        error.statusCode === 429 ||
         error.message?.includes("RESOURCE_EXHAUSTED") ||
         error.message?.includes("quota exceeded")
       ) {
         throw new Error(
           `Quota exceeded: ${
             error.message || "Your API key has reached its free tier limit"
-          }. Please check your plan at https://ai.dev/usage?tab=rate-limit or wait for the quota to reset.`
+          }. Please check your Groq account or wait for the quota to reset.`
         );
       }
 
       // If it's the last attempt or not a retryable error, throw
       if (attempt === maxRetries - 1) {
-        throw new Error(`Gemini API error: ${error.message || String(error)}`);
+        throw new Error(`Groq API error: ${error.message || String(error)}`);
       }
 
       // For other errors, wait a bit and retry
@@ -135,12 +163,12 @@ async function callGeminiAPI(
     }
   }
 
-  throw new Error("Failed to call Gemini API after multiple retries");
+  throw new Error("Failed to call Groq API after multiple retries");
 }
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
-  const [userGeminiKey, setUserGeminiKey] = useState<string | null>(null);
+  const [userGroqKey, setUserGroqKey] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -154,10 +182,10 @@ function App() {
       if (session) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("gemini_api_key")
+          .select("groq_api_key")
           .eq("id", session.user.id)
           .single();
-        setUserGeminiKey(profile?.gemini_api_key || null);
+        setUserGroqKey(profile?.groq_api_key || null);
       }
     };
     getSessionAndProfile();
@@ -170,15 +198,15 @@ function App() {
         const getProfile = async () => {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("gemini_api_key")
+            .select("groq_api_key")
             .eq("id", session.user.id)
             .single();
-          setUserGeminiKey(profile?.gemini_api_key || null);
+          setUserGroqKey(profile?.groq_api_key || null);
         };
         getProfile();
       } else {
         navigate("/");
-        setUserGeminiKey(null);
+        setUserGroqKey(null);
       }
     });
 
@@ -490,9 +518,9 @@ function App() {
   };
 
   const getStructuredExpenses = async (text: string) => {
-    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = userGroqKey || import.meta.env.VITE_GROQ_API_KEY;
     if (!apiKey) {
-      setError("Gemini API key is not set. Please check your settings.");
+      setError("Groq API key is not set. Please check your settings.");
       return;
     }
 
@@ -560,7 +588,7 @@ Please extract all expenses from: '${text}'`,
         },
       ];
 
-      const data = await callGeminiAPI(apiKey, contents);
+      const data = await callGroqAPI(apiKey, contents, 3, false);
 
       if (data.candidates && data.candidates.length > 0) {
         const responseText = data.candidates[0].content.parts[0].text;
@@ -608,7 +636,7 @@ Please extract all expenses from: '${text}'`,
         errorMessage.includes("rate limit")
       ) {
         toast.error(
-          "API quota exceeded. Please check your Google AI Studio plan or wait for quota reset."
+          "API quota exceeded. Please check your Groq account or wait for quota reset."
         );
       }
     }
@@ -620,15 +648,15 @@ Please extract all expenses from: '${text}'`,
     base64Image: string,
     mimeType: string
   ) => {
-    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = userGroqKey || import.meta.env.VITE_GROQ_API_KEY;
     if (!apiKey) {
-      setError("Gemini API key is not set.");
+      setError("Groq API key is not set.");
       return;
     }
     setIsLoading(true);
     setError(null);
     try {
-      console.log("🤖 Calling Gemini API for image analysis...");
+      console.log("🤖 Calling Groq API for image analysis...");
 
       const contents = [
         {
@@ -646,8 +674,8 @@ Please extract all expenses from: '${text}'`,
         },
       ];
 
-      const data = await callGeminiAPI(apiKey, contents);
-      console.log("🤖 Gemini API response:", data);
+      const data = await callGroqAPI(apiKey, contents, 3, true);
+      console.log("🤖 Groq API response:", data);
 
       if (data.candidates && data.candidates.length > 0) {
         const responseText = data.candidates[0].content.parts[0].text;
@@ -663,11 +691,11 @@ Please extract all expenses from: '${text}'`,
 
         addExpenses(structuredExpenses);
       } else {
-        console.log("❌ No candidates in Gemini response");
+        console.log("❌ No candidates in Groq response");
         setError("Could not extract expenses from the image.");
       }
     } catch (error: unknown) {
-      console.error("❌ Error in Gemini API call:", error);
+      console.error("❌ Error in Groq API call:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       setError(errorMessage || "Error getting structured expenses from image.");
@@ -677,7 +705,7 @@ Please extract all expenses from: '${text}'`,
         errorMessage.includes("rate limit")
       ) {
         toast.error(
-          "API quota exceeded. Please check your Google AI Studio plan or wait for quota reset."
+          "API quota exceeded. Please check your Groq account or wait for quota reset."
         );
       }
     }
@@ -696,7 +724,7 @@ Please extract all expenses from: '${text}'`,
     reader.onloadend = () => {
       const base64String = reader.result?.toString().split(",")[1];
       if (base64String) {
-        console.log("📷 Image converted to base64, sending to Gemini...");
+        console.log("📷 Image converted to base64, sending to Groq...");
         getStructuredExpensesFromImage(base64String, file.type);
       } else {
         console.error("❌ Failed to convert image to base64");
@@ -725,7 +753,7 @@ Please extract all expenses from: '${text}'`,
     toast.info("Processing PDF bank statement...");
 
     try {
-      // Simple approach: Convert PDF file directly to base64 and send to Gemini Vision
+      // Simple approach: Convert PDF file directly to base64 and send to Groq Vision
       const base64Pdf = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -737,11 +765,9 @@ Please extract all expenses from: '${text}'`,
         reader.readAsDataURL(file);
       });
 
-      console.log(
-        "📄 PDF converted to base64, sending to Gemini Vision API..."
-      );
+      console.log("📄 PDF converted to base64, sending to Groq Vision API...");
 
-      // Use Gemini Vision API to process the PDF directly
+      // Use Groq Vision API to process the PDF directly
       await getStructuredExpensesFromPDFVision(base64Pdf);
     } catch (error: unknown) {
       console.error("❌ Error processing PDF:", error);
@@ -784,14 +810,14 @@ Please extract all expenses from: '${text}'`,
   };
 
   const getStructuredExpensesFromPDFVision = async (base64Pdf: string) => {
-    const apiKey = userGeminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = userGroqKey || import.meta.env.VITE_GROQ_API_KEY;
     if (!apiKey) {
-      setError("Gemini API key is not set.");
+      setError("Groq API key is not set.");
       return;
     }
 
     try {
-      console.log("🤖 Calling Gemini Vision API for PDF analysis...");
+      console.log("🤖 Calling Groq Vision API for PDF analysis...");
 
       const contents = [
         {
@@ -809,8 +835,8 @@ Please extract all expenses from: '${text}'`,
         },
       ];
 
-      const data = await callGeminiAPI(apiKey, contents);
-      console.log("🤖 Gemini Vision API response:", data);
+      const data = await callGroqAPI(apiKey, contents, 3, true);
+      console.log("🤖 Groq Vision API response:", data);
 
       if (data.candidates && data.candidates.length > 0) {
         const responseText = data.candidates[0].content.parts[0].text;
@@ -866,11 +892,11 @@ Please extract all expenses from: '${text}'`,
           );
         }
       } else {
-        console.log("❌ No candidates in Gemini response");
+        console.log("❌ No candidates in Groq response");
         setError("Could not extract expenses from the bank statement PDF.");
       }
     } catch (error: unknown) {
-      console.error("❌ Error in Gemini Vision API call:", error);
+      console.error("❌ Error in Groq Vision API call:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       if (errorMessage.includes("JSON")) {
@@ -888,7 +914,7 @@ Please extract all expenses from: '${text}'`,
           errorMessage.includes("rate limit")
         ) {
           toast.error(
-            "API quota exceeded. Please check your Google AI Studio plan or wait for quota reset."
+            "API quota exceeded. Please check your Groq account or wait for quota reset."
           );
         }
       }
