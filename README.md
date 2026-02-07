@@ -62,3 +62,4 @@ PRs run tests and build via GitHub Actions (`.github/workflows/ci.yml`). To **re
 3. Enable **Require status checks to pass before merging**.
 4. In **Status checks that are required**, search and select **Test & Build** (the CI job name).
 5. Save. Merges to `main` will then only be allowed when the CI workflow succeeds.
+
