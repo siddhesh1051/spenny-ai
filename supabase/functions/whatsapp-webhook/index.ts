@@ -129,6 +129,7 @@ async function transcribeAudio(
   formData.append("file", blob, `voice.${ext}`);
   formData.append("model", "whisper-large-v3-turbo");
   formData.append("language", "en");
+  formData.append("response_format", "json");
 
   const res = await fetch(
     "https://api.groq.com/openai/v1/audio/transcriptions",
@@ -145,7 +146,256 @@ async function transcribeAudio(
   }
 
   const data = await res.json();
-  return data.text || "";
+  // Groq/OpenAI transcription returns { text: "..." } when response_format is json
+  const text = data?.text;
+  return typeof text === "string" ? text : "";
+}
+
+/** Classify user intent: is this an expense entry or a question/query? */
+async function classifyIntent(
+  text: string,
+  apiKey: string
+): Promise<"expense" | "query"> {
+  const prompt = `You are an intent classifier for an expense tracking app. Classify the following user message into exactly one of two categories:
+
+1. "expense" — the user is logging/adding a new expense (e.g. "spent 50 on coffee", "lunch 200", "paid rent 15000", "auto 30 movie 500")
+2. "query" — the user is asking a question about their expenses, requesting a summary, analysis, or information (e.g. "how much did I spend last month", "show my food expenses", "what's my average spending", "summarize january", "top categories", "compare this month vs last month")
+
+Message: "${text}"
+
+Reply with ONLY the single word: expense OR query`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: 10,
+    }),
+  });
+
+  if (!res.ok) {
+    // Default to expense if classification fails
+    return "expense";
+  }
+
+  const data = await res.json();
+  const answer = (data.choices?.[0]?.message?.content || "")
+    .trim()
+    .toLowerCase();
+
+  return answer.includes("query") ? "query" : "expense";
+}
+
+/** Step 1: Extract Supabase query filters from a natural language question */
+interface QueryFilters {
+  start_date: string | null; // ISO date string
+  end_date: string | null;   // ISO date string
+  category: string | null;   // one of: food, travel, groceries, entertainment, utilities, rent, other
+  sort_by: "date" | "amount";
+  sort_order: "asc" | "desc";
+  limit: number;
+}
+
+async function extractQueryFilters(
+  question: string,
+  apiKey: string
+): Promise<QueryFilters> {
+  const today = new Date().toISOString().split("T")[0];
+  const prompt = `You extract database query filters from a natural language question about expenses.
+
+Today's date: ${today}
+
+Given the user's question, return a JSON object with these fields:
+{
+  "start_date": "YYYY-MM-DD" or null,
+  "end_date": "YYYY-MM-DD" or null,
+  "category": "food" | "travel" | "groceries" | "entertainment" | "utilities" | "rent" | "other" | null,
+  "sort_by": "date" | "amount",
+  "sort_order": "asc" | "desc",
+  "limit": number (default 100, max 500)
+}
+
+Rules:
+- "last month" = first day to last day of previous month
+- "this month" = first day of current month to today
+- "this week" = last 7 days
+- "last week" = 7-14 days ago
+- "january", "feb" etc = that month of the current year (or last year if the month is in the future)
+- "yesterday" = yesterday's date for both start and end
+- "today" = today's date for both start and end
+- If no time range mentioned, set both dates to null (we'll fetch all data)
+- If user asks about a specific category like "food expenses", set category
+- If user asks "biggest" or "highest", sort_by=amount, sort_order=desc
+- If user asks "smallest" or "lowest", sort_by=amount, sort_order=asc
+- If user asks "recent" or "latest", sort_by=date, sort_order=desc
+- Default: sort_by=date, sort_order=desc, limit=100
+
+User's question: "${question}"
+
+Return ONLY the JSON object, no other text.`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+    }),
+  });
+
+  if (!res.ok) {
+    // Return defaults if filter extraction fails
+    return {
+      start_date: null,
+      end_date: null,
+      category: null,
+      sort_by: "date",
+      sort_order: "desc",
+      limit: 100,
+    };
+  }
+
+  const data = await res.json();
+  const text = (data.choices?.[0]?.message?.content || "")
+    .replace(/```json/g, "")
+    .replace(/```/g, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      start_date: parsed.start_date || null,
+      end_date: parsed.end_date || null,
+      category: parsed.category || null,
+      sort_by: parsed.sort_by === "amount" ? "amount" : "date",
+      sort_order: parsed.sort_order === "asc" ? "asc" : "desc",
+      limit: Math.min(Math.max(parsed.limit || 100, 1), 500),
+    };
+  } catch {
+    return {
+      start_date: null,
+      end_date: null,
+      category: null,
+      sort_by: "date",
+      sort_order: "desc",
+      limit: 100,
+    };
+  }
+}
+
+/** Step 2 & 3: Query Supabase with filters, then answer using Groq */
+async function answerExpenseQuery(
+  question: string,
+  userId: string,
+  apiKey: string,
+  supabase: any
+): Promise<string> {
+  // Step 1: Extract query filters from the question
+  const filters = await extractQueryFilters(question, apiKey);
+  console.log("🔍 Query filters:", JSON.stringify(filters));
+
+  // Step 2: Build targeted Supabase query
+  let query = supabase
+    .from("expenses")
+    .select("amount, category, description, date")
+    .eq("user_id", userId);
+
+  if (filters.start_date) {
+    query = query.gte("date", `${filters.start_date}T00:00:00.000Z`);
+  }
+  if (filters.end_date) {
+    query = query.lte("date", `${filters.end_date}T23:59:59.999Z`);
+  }
+  if (filters.category) {
+    query = query.eq("category", filters.category);
+  }
+
+  query = query
+    .order(filters.sort_by, { ascending: filters.sort_order === "asc" })
+    .limit(filters.limit);
+
+  const { data: expenses, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch expenses: ${error.message}`);
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  if (!expenses || expenses.length === 0) {
+    const dateInfo = filters.start_date
+      ? ` between ${filters.start_date} and ${filters.end_date || today}`
+      : "";
+    const catInfo = filters.category ? ` in ${filters.category}` : "";
+    return `No expenses found${catInfo}${dateInfo}. Start logging expenses by sending messages like "Spent 50 on coffee"!`;
+  }
+
+  // Step 3: Build compact data for Groq to summarize
+  const expenseLines = expenses.map(
+    (e: any) =>
+      `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+  );
+
+  const totalAmount = expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
+
+  const filterDesc = [];
+  if (filters.start_date) filterDesc.push(`from ${filters.start_date}`);
+  if (filters.end_date) filterDesc.push(`to ${filters.end_date}`);
+  if (filters.category) filterDesc.push(`category: ${filters.category}`);
+
+  const prompt = `You are Spenny AI, a friendly expense tracking assistant on WhatsApp.
+
+Today's date: ${today}
+Currency: Indian Rupees (₹ / INR)
+
+Query applied: ${filterDesc.length > 0 ? filterDesc.join(", ") : "all expenses"}
+Results: ${expenses.length} transactions, total ₹${totalAmount}
+
+Expense data (date | category | description | amount):
+${expenseLines.join("\n")}
+
+User's question: "${question}"
+
+Instructions:
+- Answer accurately using ONLY the data above
+- Use ₹ symbol and Indian number format (e.g. ₹1,50,000)
+- Be concise — this is WhatsApp, keep it readable
+- Use WhatsApp formatting: *bold* for emphasis, • for bullet points
+- Calculate totals, averages, comparisons, breakdowns as needed
+- Be friendly and helpful
+- Do NOT use markdown tables, use simple lists
+- Keep response under 1000 characters when possible`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Groq API error ${res.status}: ${errBody}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "Sorry, I couldn't process your question.";
 }
 
 /** Call Groq REST API to parse expenses from natural language */
@@ -242,40 +492,80 @@ Please extract all expenses from: '${text}'`;
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
-  // ── Env vars ──
-  const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
-  const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") || "";
+  // ── Env vars (Supabase injects SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY when deployed) ──
+  const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
+  const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") ?? "";
   const WHATSAPP_PHONE_NUMBER_ID =
-    Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
-  const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY") || "";
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+    Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
+  const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY") ?? "";
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
   const SUPABASE_SERVICE_ROLE_KEY =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  // ── GET: Webhook verification (Meta sends this on setup) ──
+  // ── GET: Health check (no params) or webhook verification (Meta sends hub.* on setup) ──
   if (req.method === "GET") {
     const url = new URL(req.url);
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
-      console.log("Webhook verified successfully");
-      return new Response(challenge, { status: 200 });
+    // Health check: GET with no hub params → 200 OK (so you can test the function URL)
+    if (!mode && !token && !challenge) {
+      return new Response(JSON.stringify({ ok: true, service: "whatsapp-webhook" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
+    if (!WHATSAPP_VERIFY_TOKEN) {
+      console.error("WHATSAPP_VERIFY_TOKEN secret is not set");
+      return new Response(
+        JSON.stringify({ error: "Webhook not configured: missing verify token" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (mode === "subscribe" && token === WHATSAPP_VERIFY_TOKEN) {
+      if (challenge == null || challenge === "") {
+        console.error("Meta did not send hub.challenge");
+        return new Response("Missing hub.challenge", { status: 400 });
+      }
+      console.log("Webhook verified successfully");
+      return new Response(challenge, {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    console.warn("Webhook verification failed: mode=%s token match=%s", mode, !!token);
     return new Response("Forbidden", { status: 403 });
   }
 
   // ── POST: Incoming message ──
   if (req.method === "POST") {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set");
+      return new Response("OK", { status: 200 });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    let body: unknown;
     try {
-      const body = await req.json();
+      body = await req.json();
+    } catch (e) {
+      console.error("Invalid webhook body (not JSON):", e);
+      return new Response("OK", { status: 200 });
+    }
+
+    try {
+      if (body == null || typeof body !== "object") {
+        return new Response("OK", { status: 200 });
+      }
 
       // Meta sends various webhook events; we only care about messages
-      const entry = body.entry?.[0];
+      const b = body as { entry?: Array<{ changes?: Array<{ value?: { messages?: unknown[] } }> }> };
+      const entry = b.entry?.[0];
       const changes = entry?.changes?.[0];
       const value = changes?.value;
 
@@ -284,7 +574,7 @@ Deno.serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      const message: WhatsAppMessage = value.messages[0];
+      const message = value.messages[0] as WhatsAppMessage;
       const senderPhone = normalizePhone(message.from);
 
       // Only handle text and audio messages
@@ -377,7 +667,7 @@ Deno.serve(async (req: Request) => {
       if (messageText.toLowerCase() === "help") {
         await sendWhatsAppReply(
           senderPhone,
-          `*Spenny AI - Expense Tracker*\n\nJust text or voice note me your expenses:\n\n• "Spent 50 on coffee"\n• "Paid 200 for groceries and 100 for petrol"\n• "Lunch 150, auto 30, movie tickets 500"\n• 🎙️ Send a voice note with your expenses!\n\nCommands:\n• *help* - Show this message\n• *today* - Show today's expenses\n• *total* - Show this month's total`,
+          `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "What's my average daily spend?"\n• "Compare Jan vs Feb"\n• "Top spending categories"\n\n⚡ *Quick commands:*\n• *help* - This message\n• *today* - Today's expenses\n• *total* - This month's summary`,
           WHATSAPP_PHONE_NUMBER_ID,
           WHATSAPP_TOKEN
         );
@@ -499,6 +789,37 @@ Deno.serve(async (req: Request) => {
           await sendWhatsAppReply(
             senderPhone,
             `*${monthName} Summary*\n\n${breakdown}\n\n*Total: ${formatINR(total)}*\n${monthExpenses.length} transactions`,
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+        }
+        return new Response("OK", { status: 200 });
+      }
+
+      // ── Classify intent: expense entry or question? ──
+      const intent = await classifyIntent(messageText, groqKey);
+      console.log(`💡 Intent: ${intent} for message: "${messageText}"`);
+
+      if (intent === "query") {
+        // ── Answer a question about expenses ──
+        try {
+          const answer = await answerExpenseQuery(
+            messageText,
+            userId,
+            groqKey,
+            supabase
+          );
+          await sendWhatsAppReply(
+            senderPhone,
+            answer,
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+        } catch (queryError) {
+          console.error("Query error:", queryError);
+          await sendWhatsAppReply(
+            senderPhone,
+            "Sorry, I had trouble answering that. Please try rephrasing your question.",
             WHATSAPP_PHONE_NUMBER_ID,
             WHATSAPP_TOKEN
           );
