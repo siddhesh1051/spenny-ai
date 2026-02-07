@@ -5,6 +5,13 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // @ts-expect-error - Vitest extends Vite config; types from vitest/config
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+  },
   plugins: [
     react(),
     tailwindcss(),
