@@ -52,3 +52,13 @@ export default tseslint.config({
   },
 })
 ```
+
+## CI and branch protection
+
+PRs run tests and build via GitHub Actions (`.github/workflows/ci.yml`). To **require CI to pass before merging** into `main`:
+
+1. Open your repo on GitHub → **Settings** → **Branches**.
+2. Under **Branch protection rules**, add or edit a rule for **main**.
+3. Enable **Require status checks to pass before merging**.
+4. In **Status checks that are required**, search and select **Test & Build** (the CI job name).
+5. Save. Merges to `main` will then only be allowed when the CI workflow succeeds.
