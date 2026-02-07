@@ -136,3 +136,8 @@
     transform: rotate(360deg);
   }
 }
+
+/* Calendar nav arrows: follow theme (black in light mode, white in dark mode) */
+.rdp-root .rdp-nav .rdp-chevron {
+  fill: var(--foreground);
+}
