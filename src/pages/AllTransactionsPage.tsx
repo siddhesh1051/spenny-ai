@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, Search, ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,16 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 const categories: { [key: string]: string } = {
   food: "🍔",
@@ -58,8 +68,28 @@ export function AllTransactionsPage({
 }) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
-  const totalExpense = expenses.reduce(
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((expense) => {
+      const matchesSearch =
+        !searchQuery.trim() ||
+        expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        expense.amount.toString().includes(searchQuery.trim()) ||
+        (searchQuery.trim() && !isNaN(Number(searchQuery.trim())) && expense.amount === Number(searchQuery.trim()));
+      const matchesCategory =
+        categoryFilter === "all" || expense.category === categoryFilter;
+      const expenseDate = new Date(expense.date);
+      const matchesDateFrom = !dateFrom || expenseDate >= new Date(dateFrom + "T00:00:00");
+      const matchesDateTo = !dateTo || expenseDate <= new Date(dateTo + "T23:59:59");
+      return matchesSearch && matchesCategory && matchesDateFrom && matchesDateTo;
+    });
+  }, [expenses, searchQuery, categoryFilter, dateFrom, dateTo]);
+
+  const totalExpense = filteredExpenses.reduce(
     (total, expense) => total + expense.amount,
     0
   );
@@ -80,6 +110,14 @@ export function AllTransactionsPage({
     setEditingExpense(null);
   };
 
+  const hasActiveFilters = searchQuery.trim() || categoryFilter !== "all" || dateFrom || dateTo;
+  const clearFilters = () => {
+    setSearchQuery("");
+    setCategoryFilter("all");
+    setDateFrom("");
+    setDateTo("");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col space-y-2">
@@ -88,6 +126,78 @@ export function AllTransactionsPage({
           View and manage all your expense transactions in one place.
         </p>
       </div>
+
+      {/* Filters section */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Filters</CardTitle>
+          <CardDescription>
+            Search by name or amount, filter by category, or pick a date range.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-3">
+            {/* Search bar - left */}
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Search by name or amount..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            {/* Category filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-[180px] justify-between">
+                  <span className="truncate">
+                    {categoryFilter === "all"
+                      ? "All categories"
+                      : `${categories[categoryFilter] || ""} ${categoryFilter}`}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[180px]">
+                <DropdownMenuLabel>Category</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={categoryFilter}
+                  onValueChange={setCategoryFilter}
+                >
+                  <DropdownMenuRadioItem value="all">All categories</DropdownMenuRadioItem>
+                  {Object.keys(categories).map((key) => (
+                    <DropdownMenuRadioItem key={key} value={key}>
+                      <span className="mr-2">{categories[key]}</span>
+                      {key}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {/* Date range - shadcn Range Picker (calendar view) */}
+            <DateRangePicker
+              value={{
+                from: dateFrom || undefined,
+                to: dateTo || undefined,
+              }}
+              onChange={({ from, to }) => {
+                setDateFrom(from ?? "");
+                setDateTo(to ?? "");
+              }}
+              placeholder="Date range"
+              align="start"
+            />
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -98,9 +208,11 @@ export function AllTransactionsPage({
                 Complete list of all your expense transactions.
               </CardDescription>
             </div>
-            {expenses.length > 0 && (
+            {filteredExpenses.length > 0 && (
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Total Expenses</p>
+                <p className="text-sm text-muted-foreground">
+                  Total {hasActiveFilters ? `(filtered)` : ""}
+                </p>
                 <p className="text-2xl font-bold">₹{totalExpense.toFixed(2)}</p>
               </div>
             )}
@@ -155,7 +267,7 @@ export function AllTransactionsPage({
                 </Table>
               </div>
             </div>
-          ) : expenses.length === 0 ? (
+          ) : filteredExpenses.length === 0 ? (
             <div className="text-center py-12">
               <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-4">
                 <svg
@@ -172,16 +284,25 @@ export function AllTransactionsPage({
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold mb-2">No transactions yet</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                {hasActiveFilters ? "No matching transactions" : "No transactions yet"}
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Start adding expenses to see them here.
+                {hasActiveFilters
+                  ? "Try adjusting your filters or clear them to see all transactions."
+                  : "Start adding expenses to see them here."}
               </p>
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
             </div>
           ) : (
             <>
               {/* Mobile View - Card List */}
               <div className="md:hidden space-y-4">
-                {expenses.map((expense) => (
+                {filteredExpenses.map((expense) => (
                   <Card key={expense.id} className="px-4 py-3 gap-2">
                     <div className="flex justify-between items-start">
                       <div>
@@ -231,7 +352,7 @@ export function AllTransactionsPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {expenses.map((expense) => (
+                    {filteredExpenses.map((expense) => (
                       <TableRow key={expense.id}>
                         <TableCell className="font-medium">
                           {expense.description}
