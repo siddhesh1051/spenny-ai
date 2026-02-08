@@ -1,6 +1,25 @@
-import type { Session } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
+
+/** Ensure a profile row exists for the user (e.g. after Google sign-in). Creates one if missing. */
+async function ensureProfile(user: User): Promise<void> {
+  const { data: existing } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (existing) return;
+  const fullName =
+    user.user_metadata?.full_name ??
+    user.user_metadata?.name ??
+    (user.email ? user.email.split("@")[0] : "");
+  await supabase.from("profiles").upsert({
+    id: user.id,
+    full_name: fullName,
+    updated_at: new Date().toISOString(),
+  });
+}
 import AuthPage from "./pages/AuthPage";
 import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
@@ -126,8 +145,7 @@ async function callGroqAPI(
 
         if (attempt < maxRetries - 1) {
           console.log(
-            `⏳ Rate limit exceeded. Retrying in ${
-              delayMs / 1000
+            `⏳ Rate limit exceeded. Retrying in ${delayMs / 1000
             } seconds... (attempt ${attempt + 1}/${maxRetries})`
           );
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -147,8 +165,7 @@ async function callGroqAPI(
         error.message?.includes("quota exceeded")
       ) {
         throw new Error(
-          `Quota exceeded: ${
-            error.message || "Your API key has reached its free tier limit"
+          `Quota exceeded: ${error.message || "Your API key has reached its free tier limit"
           }. Please check your Groq account or wait for the quota to reset.`
         );
       }
@@ -180,6 +197,7 @@ function App() {
       } = await supabase.auth.getSession();
       setSession(session);
       if (session) {
+        await ensureProfile(session.user);
         const { data: profile } = await supabase
           .from("profiles")
           .select("groq_api_key")
@@ -195,7 +213,8 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
-        const getProfile = async () => {
+        const initProfileAndGetGroq = async () => {
+          await ensureProfile(session.user);
           const { data: profile } = await supabase
             .from("profiles")
             .select("groq_api_key")
@@ -203,7 +222,7 @@ function App() {
             .single();
           setUserGroqKey(profile?.groq_api_key || null);
         };
-        getProfile();
+        initProfileAndGetGroq();
       } else {
         navigate("/");
         setUserGroqKey(null);
@@ -268,8 +287,7 @@ function App() {
         } catch (error: unknown) {
           console.error("❌ Error fetching shared file:", error);
           toast.error(
-            `Error processing shared image: ${
-              error instanceof Error ? error.message : String(error)
+            `Error processing shared image: ${error instanceof Error ? error.message : String(error)
             }`
           );
         }
