@@ -66,6 +66,7 @@
     "vitest": "^2.1.8"
   },
   "optionalDependencies": {
+    "@esbuild/linux-x64": "^0.25.5",
     "@rollup/rollup-linux-x64-gnu": "^4.44.0",
     "lightningcss-linux-x64-gnu": "^1.30.1"
   }
