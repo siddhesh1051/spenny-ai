@@ -5,6 +5,7 @@ loadEnv({ path: ".env.e2e" });
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
 const isLocal = baseURL.startsWith("http://localhost");
+const slowMo = process.env.SLOW_MO ? Number(process.env.SLOW_MO) : 0;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -17,6 +18,7 @@ export default defineConfig({
     baseURL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    ...(slowMo > 0 && { launchOptions: { slowMo } }),
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
