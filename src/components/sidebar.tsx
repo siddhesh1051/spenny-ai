@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2, Settings, LogOut, Receipt } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut, Receipt, MessageCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
@@ -46,7 +46,7 @@ export function Sidebar({
       <div
         className={`
           flex flex-col h-full bg-card border-r text-card-foreground p-2 
-          fixed top-0 left-0 w-64 z-50 transition-transform duration-300 ease-in-out md:relative md:translate-x-0
+          fixed top-0 left-0 w-72 z-50 transition-transform duration-300 ease-in-out md:relative md:translate-x-0
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
         `}
       >
@@ -67,7 +67,7 @@ export function Sidebar({
           <NavLink
             to="/"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -75,13 +75,13 @@ export function Sidebar({
             }
             onClick={handleLinkClick}
           >
-            <Home className="mr-3 h-5 w-5" />
+            <Home className="mr-3 h-5 w-5 shrink-0" />
             Home
           </NavLink>
           <NavLink
             to="/transactions"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -89,13 +89,13 @@ export function Sidebar({
             }
             onClick={handleLinkClick}
           >
-            <Receipt className="mr-3 h-5 w-5" />
+            <Receipt className="mr-3 h-5 w-5 shrink-0" />
             All Transactions
           </NavLink>
           <NavLink
             to="/analytics"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -103,13 +103,27 @@ export function Sidebar({
             }
             onClick={handleLinkClick}
           >
-            <BarChart2 className="mr-3 h-5 w-5" />
+            <BarChart2 className="mr-3 h-5 w-5 shrink-0" />
             Analytics
+          </NavLink>
+          <NavLink
+            to="/whatsapp-integration"
+            className={({ isActive }) =>
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`
+            }
+            onClick={handleLinkClick}
+          >
+            <MessageCircle className="mr-3 h-5 w-5 shrink-0" />
+            WhatsApp Integration
           </NavLink>
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -117,7 +131,7 @@ export function Sidebar({
             }
             onClick={handleLinkClick}
           >
-            <Settings className="mr-3 h-5 w-5" />
+            <Settings className="mr-3 h-5 w-5 shrink-0" />
             Settings
           </NavLink>
         </nav>

@@ -18,7 +18,6 @@ export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [fullName, setFullName] = useState("");
   const [groqApiKey, setGroqApiKey] = useState("");
-  const [whatsappPhone, setWhatsappPhone] = useState("");
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -42,7 +41,7 @@ export default function SettingsPage() {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select(`full_name, groq_api_key, whatsapp_phone`)
+        .select(`full_name, groq_api_key`)
         .eq("id", user.id)
         .single();
 
@@ -53,7 +52,6 @@ export default function SettingsPage() {
       if (data) {
         setFullName(data.full_name || "");
         setGroqApiKey(data.groq_api_key || "");
-        setWhatsappPhone(data.whatsapp_phone || "");
       }
     } catch (error: any) {
       console.error("Error fetching profile:", error.message);
@@ -66,14 +64,10 @@ export default function SettingsPage() {
     if (!user) return;
     setIsSubmitting(true);
     try {
-      // Normalize phone: strip everything except digits
-      const normalizedPhone = whatsappPhone.replace(/\D/g, "") || null;
-
       const updates = {
         id: user.id,
         full_name: fullName,
         groq_api_key: groqApiKey,
-        whatsapp_phone: normalizedPhone,
         updated_at: new Date(),
       };
       // update the profile table
@@ -138,25 +132,6 @@ export default function SettingsPage() {
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Your name"
           />
-        </div>
-        <div>
-          <label htmlFor="whatsappPhone">WhatsApp Number</label>
-          <Input
-            id="whatsappPhone"
-            type="tel"
-            value={whatsappPhone}
-            onChange={(e) => setWhatsappPhone(e.target.value)}
-            placeholder="e.g. +91 98765 43210"
-          />
-          <p className="text-sm text-muted-foreground mt-1">
-            Link your WhatsApp number to add expenses via chat. Include country
-            code (e.g. +91 for India).
-            {whatsappPhone && whatsappPhone.replace(/\D/g, "").length > 0 && (
-              <span className="block text-green-600 dark:text-green-400 mt-1">
-                Stored as: {whatsappPhone.replace(/\D/g, "")}
-              </span>
-            )}
-          </p>
         </div>
         <div>
           <label htmlFor="groqApiKey">Groq API Key</label>

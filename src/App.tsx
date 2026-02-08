@@ -26,6 +26,7 @@ import { HomePage } from "./pages/HomePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { AllTransactionsPage } from "./pages/AllTransactionsPage";
 import SettingsPage from "./pages/SettingsPage";
+import WhatsAppIntegrationPage from "./pages/WhatsAppIntegrationPage";
 import { Sidebar } from "./components/sidebar";
 import { ModeToggle } from "./components/mode-toggle";
 import { Button } from "./components/ui/button";
@@ -1169,6 +1170,7 @@ Please extract all expenses from: '${text}'`,
                 />
               }
             />
+            <Route path="/whatsapp-integration" element={<WhatsAppIntegrationPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
             <Route
