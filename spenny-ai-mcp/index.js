@@ -12,7 +12,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 
 // Supabase configuration (hardcoded for NPM package)
-const SUPABASE_URL = "https://imtnhobztjbgnlgnhlvs.supabase.co";
+const SUPABASE_URL = "https://wxvjzzepfimbnbxiutrj.supabase.co";
 const SUPABASE_SERVICE_ROLE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImltdG5ob2J6dGpiZ25sZ25obHZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDYyMTI3MCwiZXhwIjoyMDY2MTk3MjcwfQ.ZLMkOgj6YQ4b0RerFHnRV1kdUYEos_TqWPYCeX-xXnI";
 
