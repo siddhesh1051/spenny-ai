@@ -1,3 +1,22 @@
+# Spenny AI
+
+Expense tracker with AI (React + TypeScript + Vite).
+
+## E2E tests (Playwright)
+
+- **Run all e2e (Chromium):** `npm run e2e`
+- **Run with UI:** `npm run e2e:ui`
+- **Run headed (see browser):** `npm run e2e:headed`
+
+**Auth flow** tests run without any config. **Full flow** (sign in → add expense → transactions) runs only when test credentials are set:
+
+1. Copy `.env.e2e.example` to `.env.e2e`
+2. Set `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` to a real Supabase user (the test will sign in and add an expense)
+
+The app must be able to reach your Supabase project (use the same `VITE_SUPABASE_*` as in `.env` when running `npm run dev`).
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
