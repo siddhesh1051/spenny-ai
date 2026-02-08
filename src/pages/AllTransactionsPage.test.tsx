@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen } from "@/test/test-utils";
+import { render, screen, within } from "@/test/test-utils";
 import { AllTransactionsPage } from "./AllTransactionsPage";
 
 const mockExpenses = [
@@ -92,8 +92,14 @@ describe("AllTransactionsPage - Transactions flow", () => {
       />
     );
 
-    const iconButtons = screen.getAllByRole("button").filter((b) => b.querySelector("svg"));
-    await user.click(iconButtons[0]!);
+    // Find the row or card that contains "Lunch", then the edit button (first action button)
+    const lunchCell = screen.getAllByText("Lunch")[0]!;
+    const row = lunchCell.closest("tr");
+    const card = lunchCell.closest('[data-slot="card"]');
+    const container = row ?? card;
+    expect(container).toBeTruthy();
+    const editButton = within(container as HTMLElement).getAllByRole("button")[0]!;
+    await user.click(editButton);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Edit Transaction")).toBeInTheDocument();
@@ -113,10 +119,14 @@ describe("AllTransactionsPage - Transactions flow", () => {
       />
     );
 
-    const iconButtons = screen.getAllByRole("button").filter((b) => b.querySelector("svg"));
-    await user.click(iconButtons[0]!);
+    const lunchCell = screen.getAllByText("Lunch")[0]!;
+    const row = lunchCell.closest("tr");
+    const card = lunchCell.closest('[data-slot="card"]');
+    const container = row ?? card;
+    const editButton = within(container as HTMLElement).getAllByRole("button")[0]!;
+    await user.click(editButton);
 
-    const descInput = screen.getByDisplayValue("Lunch");
+    const descInput = await screen.findByDisplayValue("Lunch");
     await user.clear(descInput);
     await user.type(descInput, "Updated Lunch");
     await user.click(screen.getByRole("button", { name: /save changes/i }));

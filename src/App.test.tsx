@@ -26,6 +26,8 @@ describe("App - Full flow integration", () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: { groq_api_key: null } }),
+      maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+      upsert: vi.fn().mockResolvedValue({}),
     });
   });
 
@@ -51,6 +53,8 @@ describe("App - Full flow integration", () => {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({ data: { groq_api_key: null } }),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+          upsert: vi.fn().mockResolvedValue({}),
         };
       }
       if (table === "expenses") {
@@ -59,7 +63,13 @@ describe("App - Full flow integration", () => {
           order: vi.fn().mockResolvedValue({ data: [], error: null }),
         };
       }
-      return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), single: vi.fn() };
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+        upsert: vi.fn().mockResolvedValue({}),
+      };
     });
 
     render(<App />);

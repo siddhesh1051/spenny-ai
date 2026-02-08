@@ -23,16 +23,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            echo "package-lock.json not found, using npm install instead"
-            npm install
-          fi
+        run: npm install
 
       - name: Run unit tests
         run: npm run test:run
