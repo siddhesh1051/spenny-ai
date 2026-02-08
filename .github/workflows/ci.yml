@@ -26,7 +26,13 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "package-lock.json not found, using npm install instead"
+            npm install
+          fi
 
       - name: Run unit tests
         run: npm run test:run
