@@ -68,6 +68,8 @@ async function sendWhatsAppReply(
   if (!res.ok) {
     const errBody = await res.text();
     console.error("WhatsApp send failed:", res.status, errBody);
+  } else {
+    console.log("WhatsApp reply sent to", to);
   }
 }
 
@@ -84,10 +86,12 @@ async function downloadWhatsAppMedia(
 
   if (!metaRes.ok) {
     const err = await metaRes.text();
+    console.error("WhatsApp media meta fetch failed:", mediaId, metaRes.status, err);
     throw new Error(`Failed to get media URL: ${metaRes.status} ${err}`);
   }
 
   const metaData = await metaRes.json();
+  console.log("WhatsApp media meta fetched:", mediaId, "mime:", metaData.mime_type);
   const mediaUrl = metaData.url;
   const mimeType = metaData.mime_type || "audio/ogg";
 
@@ -142,28 +146,42 @@ async function transcribeAudio(
 
   if (!res.ok) {
     const err = await res.text();
+    console.error("Groq Whisper transcription failed:", res.status, err);
     throw new Error(`Groq Whisper error ${res.status}: ${err}`);
   }
 
   const data = await res.json();
+  console.log("Groq Whisper transcription completed, length:", data?.text?.length ?? 0);
   // Groq/OpenAI transcription returns { text: "..." } when response_format is json
   const text = data?.text;
   return typeof text === "string" ? text : "";
 }
 
-/** Classify user intent: is this an expense entry or a question/query? */
+/** Classify user intent: expense entry, expense question, or general conversation */
 async function classifyIntent(
   text: string,
   apiKey: string
-): Promise<"expense" | "query"> {
-  const prompt = `You are an intent classifier for an expense tracking app. Classify the following user message into exactly one of two categories:
+): Promise<"expense" | "query" | "conversation"> {
+  const trimmed = text.trim().toLowerCase();
+  // Fast path: obvious greetings or capability questions → conversation
+  const conversationPatterns = [
+    /^(hi|hello|hey|hiya|hey there|hola|namaste|good morning|good afternoon|good evening)[\s!?.,]*$/i,
+    /^(what can you do|what do you do|who are you|how do you work|what are you|tell me about yourself)[\s?]*$/i,
+    /^(thanks?|thank you|thx|ok|okay|cool|great|bye|goodbye)[\s!?.,]*$/i,
+  ];
+  if (conversationPatterns.some((p) => p.test(trimmed))) {
+    return "conversation";
+  }
+
+  const prompt = `You are an intent classifier for an expense tracking app. Classify the following user message into exactly one of three categories:
 
 1. "expense" — the user is logging/adding a new expense (e.g. "spent 50 on coffee", "lunch 200", "paid rent 15000", "auto 30 movie 500")
 2. "query" — the user is asking a question about their expenses, requesting a summary, analysis, or information (e.g. "how much did I spend last month", "show my food expenses", "what's my average spending", "summarize january", "top categories", "compare this month vs last month")
+3. "conversation" — greetings, small talk, asking what the bot can do, thanks, goodbye, or anything that is NOT logging an expense and NOT a question about expense data (e.g. "hi", "hello", "what can you do", "who are you", "thanks", "bye")
 
 Message: "${text}"
 
-Reply with ONLY the single word: expense OR query`;
+Reply with ONLY one word: expense OR query OR conversation`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -175,12 +193,12 @@ Reply with ONLY the single word: expense OR query`;
       model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
-      max_tokens: 10,
+      max_tokens: 15,
     }),
   });
 
   if (!res.ok) {
-    // Default to expense if classification fails
+    console.warn("Intent classification API failed:", res.status, ", defaulting to expense");
     return "expense";
   }
 
@@ -189,7 +207,31 @@ Reply with ONLY the single word: expense OR query`;
     .trim()
     .toLowerCase();
 
-  return answer.includes("query") ? "query" : "expense";
+  if (answer.includes("conversation")) return "conversation";
+  if (answer.includes("query")) return "query";
+  return "expense";
+}
+
+/** Reply for general conversation (greetings, "what can you do", etc.) */
+function getConversationReply(messageText: string): string {
+  const t = messageText.trim().toLowerCase();
+  // Greetings
+  if (/^(hi|hello|hey|hiya|hola|namaste|good morning|good afternoon|good evening)/i.test(t)) {
+    return "Hi! 👋 I'm Spenny AI — your expense tracker on WhatsApp.\n\nYou can *log expenses* (e.g. \"spent 50 on coffee\") or *ask about your spending* (e.g. \"how much last month?\").\n\nSay *help* for all commands.";
+  }
+  // What can you do / who are you
+  if (/what can you do|what do you do|who are you|how do you work|what are you|tell me about yourself/i.test(t)) {
+    return `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "What's my average daily spend?"\n• "Top spending categories"\n\n⚡ *Quick:* *help* • *today* • *total*`;
+  }
+  // Thanks / bye
+  if (/^(thanks?|thank you|thx|ok|okay|cool|great)/i.test(t)) {
+    return "You're welcome! 😊 Message me anytime to log expenses or ask about your spending.";
+  }
+  if (/^(bye|goodbye)/i.test(t)) {
+    return "Bye! 👋 Log your expenses anytime.";
+  }
+  // Fallback: short helpful reply
+  return "I'm Spenny AI — I help you track expenses on WhatsApp. You can log expenses (e.g. \"spent 100 on lunch\") or ask about your spending (e.g. \"how much last month?\"). Say *help* for more.";
 }
 
 /** Step 1: Extract Supabase query filters from a natural language question */
@@ -254,7 +296,7 @@ Return ONLY the JSON object, no other text.`;
   });
 
   if (!res.ok) {
-    // Return defaults if filter extraction fails
+    console.warn("Query filter extraction failed:", res.status, ", using defaults");
     return {
       start_date: null,
       end_date: null,
@@ -327,8 +369,10 @@ async function answerExpenseQuery(
   const { data: expenses, error } = await query;
 
   if (error) {
+    console.error("Supabase expenses fetch error:", error.message, "userId:", userId);
     throw new Error(`Failed to fetch expenses: ${error.message}`);
   }
+  console.log("Fetched", expenses?.length ?? 0, "expenses for query");
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -464,11 +508,13 @@ Please extract all expenses from: '${text}'`;
 
   if (!res.ok) {
     const errBody = await res.text();
+    console.error("Groq expense parsing failed:", res.status, errBody);
     throw new Error(`Groq API error ${res.status}: ${errBody}`);
   }
 
   const data = await res.json();
   const responseText = data.choices?.[0]?.message?.content || "";
+  console.log("Groq expense parse response length:", responseText.length);
 
   const cleanedJson = responseText
     .replace(/```json/g, "")
@@ -492,6 +538,8 @@ Please extract all expenses from: '${text}'`;
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
+  console.log("[webhook] Incoming", req.method, req.url);
+
   // ── Env vars (Supabase injects SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY when deployed) ──
   const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
   const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") ?? "";
@@ -511,6 +559,7 @@ Deno.serve(async (req: Request) => {
 
     // Health check: GET with no hub params → 200 OK (so you can test the function URL)
     if (!mode && !token && !challenge) {
+      console.log("[webhook] Health check");
       return new Response(JSON.stringify({ ok: true, service: "whatsapp-webhook" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -571,14 +620,17 @@ Deno.serve(async (req: Request) => {
 
       // Ignore status updates (sent, delivered, read)
       if (!value?.messages || value.messages.length === 0) {
+        console.log("[webhook] POST: no messages in payload (status update or empty)");
         return new Response("OK", { status: 200 });
       }
 
       const message = value.messages[0] as WhatsAppMessage;
       const senderPhone = normalizePhone(message.from);
+      console.log("[webhook] Message from", senderPhone, "type:", message.type);
 
       // Only handle text and audio messages
       if (message.type !== "text" && message.type !== "audio") {
+        console.log("[webhook] Unsupported message type:", message.type);
         await sendWhatsAppReply(
           senderPhone,
           "Hey! I can process text and voice messages. Send me your expenses like:\n\n\"Spent 50 on coffee and 200 for groceries\"\n\nOr just send a voice note!",
@@ -603,6 +655,7 @@ Deno.serve(async (req: Request) => {
           .single();
 
         if (!audioProfile) {
+          console.log("[webhook] Audio from unlinked number:", senderPhone);
           await sendWhatsAppReply(
             senderPhone,
             `Hey! Your WhatsApp number isn't linked to a Spenny AI account yet.\n\nTo link it:\n1. Open Spenny AI app\n2. Go to Settings\n3. Enter your WhatsApp number: +${senderPhone}\n4. Save\n\nThen message me again!`,
@@ -658,8 +711,11 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!messageText) {
+        console.log("[webhook] Empty message text, skipping");
         return new Response("OK", { status: 200 });
       }
+
+      console.log("[webhook] Processing message:", messageText.substring(0, 80) + (messageText.length > 80 ? "..." : ""));
 
       // ── Handle special commands ──
 
@@ -682,6 +738,7 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (profileError || !profile) {
+        console.log("[webhook] Profile not found for phone:", senderPhone, profileError?.message ?? "");
         await sendWhatsAppReply(
           senderPhone,
           `Hey! Your WhatsApp number isn't linked to a Spenny AI account yet.\n\nTo link it:\n1. Open Spenny AI app\n2. Go to Settings\n3. Enter your WhatsApp number: +${senderPhone}\n4. Save\n\nThen message me again!`,
@@ -707,6 +764,7 @@ Deno.serve(async (req: Request) => {
 
       // ── TODAY command ──
       if (messageText.toLowerCase() === "today") {
+        console.log("[webhook] TODAY command, userId:", userId);
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
@@ -741,6 +799,7 @@ Deno.serve(async (req: Request) => {
 
       // ── TOTAL command (current month) ──
       if (messageText.toLowerCase() === "total") {
+        console.log("[webhook] TOTAL command, userId:", userId);
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -796,12 +855,23 @@ Deno.serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // ── Classify intent: expense entry or question? ──
+      // ── Classify: expense entry, expense question, or general conversation? ──
       const intent = await classifyIntent(messageText, groqKey);
       console.log(`💡 Intent: ${intent} for message: "${messageText}"`);
 
+      if (intent === "conversation") {
+        const reply = getConversationReply(messageText);
+        await sendWhatsAppReply(
+          senderPhone,
+          reply,
+          WHATSAPP_PHONE_NUMBER_ID,
+          WHATSAPP_TOKEN
+        );
+        return new Response("OK", { status: 200 });
+      }
+
       if (intent === "query") {
-        // ── Answer a question about expenses ──
+        console.log("[webhook] Query intent, answering question");
         try {
           const answer = await answerExpenseQuery(
             messageText,
@@ -843,6 +913,7 @@ Deno.serve(async (req: Request) => {
       }
 
       if (expenses.length === 0) {
+        console.log("[webhook] Groq returned 0 valid expenses");
         await sendWhatsAppReply(
           senderPhone,
           "I couldn't find any expenses in your message. Try:\n\"Spent 50 on coffee and 200 for groceries\"",
@@ -859,6 +930,7 @@ Deno.serve(async (req: Request) => {
         user_id: userId,
       }));
 
+      console.log("[webhook] Inserting", expenses.length, "expenses for userId:", userId);
       const { data: inserted, error: insertError } = await supabase
         .from("expenses")
         .insert(expensesWithMeta)
@@ -889,6 +961,7 @@ Deno.serve(async (req: Request) => {
           ? `${voiceTag}${lines[0]}\n\nAdded to your expenses!`
           : `${voiceTag}*Added ${inserted.length} expenses:*\n\n${lines.join("\n")}\n\n*Total: ${formatINR(total)}*`;
 
+      console.log("[webhook] Success: inserted", inserted?.length ?? 0, "expenses, sending confirmation");
       await sendWhatsAppReply(
         senderPhone,
         replyText,
