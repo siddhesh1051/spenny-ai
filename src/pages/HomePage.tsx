@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Plus, Upload, FileText } from "lucide-react";
+import { Mic, Plus, Upload, FileText, Check, X, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 
 
 export function HomePage({
@@ -20,6 +21,13 @@ export function HomePage({
   getStructuredExpenses,
   handleExpenseImage,
   handlePDFUpload,
+  interimTranscript,
+  pendingExpenses,
+  confirmPendingExpenses,
+  cancelPendingExpenses,
+  editPendingExpense,
+  stopAutoSaveTimer,
+  isExpensesClosing,
 }: {
   isRecording: boolean;
   isLoading: boolean;
@@ -27,10 +35,19 @@ export function HomePage({
   getStructuredExpenses: (text: string) => Promise<void>;
   handleExpenseImage: (file: File) => void;
   handlePDFUpload: (file: File) => Promise<void>;
+  interimTranscript?: string;
+  pendingExpenses?: { amount: number; category: string; description: string }[] | null;
+  confirmPendingExpenses?: () => void;
+  cancelPendingExpenses?: () => void;
+  editPendingExpense?: (index: number, field: "amount" | "category" | "description", value: string | number) => void;
+  stopAutoSaveTimer?: () => void;
+  isExpensesClosing?: boolean;
 }) {
   const [textInput, setTextInput] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [lastImageUrl, setLastImageUrl] = useState<string | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -41,6 +58,35 @@ export function HomePage({
     window.addEventListener("spenny-image-shared", handler);
     return () => window.removeEventListener("spenny-image-shared", handler);
   }, []);
+
+  // Countdown timer for pending expenses
+  useEffect(() => {
+    if (pendingExpenses && pendingExpenses.length > 0 && editingIndex === null) {
+      setCountdown(5);
+      const interval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => {
+        clearInterval(interval);
+      };
+    }
+  }, [pendingExpenses, editingIndex]);
+
+  const handleEditClick = (index: number) => {
+    setEditingIndex(index);
+    stopAutoSaveTimer?.();
+  };
+
+  const handleEditDone = () => {
+    setEditingIndex(null);
+  };
 
   const handleSaveTextExpense = async () => {
     if (textInput.trim()) {
@@ -204,6 +250,134 @@ export function HomePage({
             />
           </Button>
         </div>
+
+        {/* Live Transcript Display */}
+        {isRecording && interimTranscript && (
+          <div className="mt-6 p-4 bg-primary/10 rounded-lg max-w-2xl w-full mx-auto border border-primary/20 animate-pulse">
+            <p className="text-sm text-muted-foreground mb-1">You're saying:</p>
+            <p className="text-lg font-medium">{interimTranscript}</p>
+          </div>
+        )}
+
+        {/* Pending Expenses Confirmation */}
+        {pendingExpenses && pendingExpenses.length > 0 && (
+          <div 
+            className="mt-6 max-w-3xl w-full mx-auto transition-all duration-300"
+            style={{
+              transform: isExpensesClosing ? 'scale(0.8)' : 'scale(1)',
+              opacity: isExpensesClosing ? 0 : 1,
+            }}
+          >
+            <div 
+              className="relative p-6 bg-card rounded-lg shadow-lg transition-all duration-1000"
+              style={{
+                boxShadow: editingIndex === null 
+                  ? `0 0 0 3px hsl(var(--primary))` 
+                  : `0 0 0 2px hsl(var(--border))`,
+                background: editingIndex === null
+                  ? `linear-gradient(90deg, 
+                      hsl(var(--card)) 0%, 
+                      hsl(var(--card)) ${(countdown / 5) * 100}%, 
+                      hsl(var(--card)) ${(countdown / 5) * 100}%, 
+                      hsl(var(--card)) 100%)`
+                  : 'hsl(var(--card))',
+                borderWidth: '3px',
+                borderStyle: 'solid',
+                borderColor: 'transparent',
+                borderImage: editingIndex === null
+                  ? `linear-gradient(90deg, 
+                      hsl(var(--primary)) 0%, 
+                      hsl(var(--primary)) ${(countdown / 5) * 100}%, 
+                      transparent ${(countdown / 5) * 100}%, 
+                      transparent 100%) 1`
+                  : 'none',
+              }}
+            >
+              {/* Close button */}
+              <button
+                onClick={cancelPendingExpenses}
+                className="absolute top-4 right-4 p-1 hover:bg-muted rounded-full transition-colors z-10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="mb-4 pr-8">
+                <h3 className="text-lg font-semibold">Adding these expenses:</h3>
+              </div>
+
+              <div className="space-y-3 mb-4">
+                {pendingExpenses.map((expense, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 p-3 bg-background rounded-lg border"
+                  >
+                    {editingIndex === index ? (
+                      <>
+                        <Input
+                          type="number"
+                          value={expense.amount}
+                          onChange={(e) =>
+                            editPendingExpense?.(index, "amount", e.target.value)
+                          }
+                          className="w-24"
+                        />
+                        <Input
+                          value={expense.category}
+                          onChange={(e) =>
+                            editPendingExpense?.(index, "category", e.target.value)
+                          }
+                          className="w-32"
+                        />
+                        <Input
+                          value={expense.description}
+                          onChange={(e) =>
+                            editPendingExpense?.(index, "description", e.target.value)
+                          }
+                          className="flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleEditDone}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-lg min-w-20">
+                          ₹{expense.amount}
+                        </span>
+                        <span className="px-3 py-1 bg-primary/10 rounded-full text-sm capitalize min-w-28 text-center">
+                          {expense.category}
+                        </span>
+                        <span className="flex-1">{expense.description}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditClick(index)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {editingIndex !== null && (
+                <Button
+                  onClick={confirmPendingExpenses}
+                  className="w-full"
+                  size="lg"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Confirm & Save
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

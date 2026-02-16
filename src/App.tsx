@@ -1,5 +1,5 @@
 import type { Session, User } from "@supabase/supabase-js";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 
 /** Ensure a profile row exists for the user (e.g. after Google sign-in). Creates one if missing. */
@@ -239,6 +239,21 @@ function App() {
   const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [pendingExpenses, setPendingExpenses] = useState<
+    { amount: number; category: string; description: string }[] | null
+  >(null);
+  const [isExpensesClosing, setIsExpensesClosing] = useState(false);
+  const pendingExpensesRef = useRef<typeof pendingExpenses>(null);
+  const dismissTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    pendingExpensesRef.current = pendingExpenses;
+    if (pendingExpenses) {
+      setIsExpensesClosing(false);
+    }
+  }, [pendingExpenses]);
 
   // Handle shared files from server
   useEffect(() => {
@@ -462,17 +477,17 @@ function App() {
 
     // Event handlers
     recognition.onstart = () => {
-      console.log("🎤 Speech recognition started");
       setIsRecording(true);
       setError(null); // Clear any previous errors
+      setInterimTranscript(""); // Clear previous transcript
       finalTranscript = "";
     };
 
     recognition.onend = () => {
-      console.log("🎤 Speech recognition ended");
       setIsRecording(false);
+      setInterimTranscript(""); // Clear interim transcript
       recognitionRef.current = null;
-      
+
       if (silenceTimeout) {
         clearTimeout(silenceTimeout);
       }
@@ -482,7 +497,6 @@ function App() {
 
       // Process the final transcript if we have one
       if (finalTranscript && finalTranscript.trim().length > 0) {
-        console.log("📝 Final transcript:", finalTranscript);
         getStructuredExpenses(finalTranscript);
       } else {
         setError("No speech detected. Please try again.");
@@ -490,10 +504,9 @@ function App() {
     };
 
     recognition.onerror = (event: any) => {
-      console.error("❌ Speech recognition error:", event.error);
       setIsRecording(false);
       recognitionRef.current = null;
-      
+
       if (silenceTimeout) {
         clearTimeout(silenceTimeout);
       }
@@ -530,14 +543,12 @@ function App() {
     };
 
     recognition.onresult = (event: any) => {
-      console.log("📊 Speech result event:", event.results.length);
-      
       // Reset silence timeout on any speech
       if (silenceTimeout) {
         clearTimeout(silenceTimeout);
       }
 
-      let interimTranscript = "";
+      let currentInterimTranscript = "";
 
       // Process all results
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -545,17 +556,17 @@ function App() {
         
         if (event.results[i].isFinal) {
           finalTranscript += transcript + " ";
-          console.log("✅ Final result:", transcript);
         } else {
-          interimTranscript += transcript;
-          console.log("⏳ Interim result:", transcript);
+          currentInterimTranscript += transcript;
         }
       }
 
+      // Update the interim transcript display
+      setInterimTranscript(finalTranscript + currentInterimTranscript);
+
       // If we have interim results, set a silence timeout to stop recording
-      if (interimTranscript || finalTranscript) {
+      if (currentInterimTranscript || finalTranscript) {
         silenceTimeout = setTimeout(() => {
-          console.log("🔇 Silence detected, stopping recognition");
           if (recognitionRef.current) {
             recognitionRef.current.stop();
           }
@@ -566,7 +577,7 @@ function App() {
     // Start recognition with error handling
     try {
       recognition.start();
-      
+
       // Set a maximum recording time of 30 seconds
       speechTimeoutRef.current = setTimeout(() => {
         console.log("⏰ Max recording time reached, stopping");
@@ -576,7 +587,6 @@ function App() {
       }, 30000);
       
     } catch (error) {
-      console.error("❌ Failed to start recognition:", error);
       setError("Failed to start speech recognition. Please try again.");
       setIsRecording(false);
       recognitionRef.current = null;
@@ -682,7 +692,16 @@ Please extract all expenses from: '${text}'`,
           );
 
           if (validExpenses.length > 0) {
-            addExpenses(validExpenses);
+            // Show pending expenses instead of adding directly
+            setPendingExpenses(validExpenses);
+
+            // Auto-dismiss after 5 seconds
+            if (dismissTimeoutRef.current) {
+              clearTimeout(dismissTimeoutRef.current);
+            }
+            dismissTimeoutRef.current = setTimeout(() => {
+              confirmPendingExpenses();
+            }, 5000);
           } else {
             setError("No valid expenses could be extracted from your speech.");
           }
@@ -708,6 +727,63 @@ Please extract all expenses from: '${text}'`,
     }
 
     setIsLoading(false);
+  };
+
+  const confirmPendingExpenses = useCallback(() => {
+    if (pendingExpensesRef.current) {
+      // Trigger closing animation
+      setIsExpensesClosing(true);
+      
+      // Add date to each expense before saving
+      const expensesWithDate = pendingExpensesRef.current.map(expense => ({
+        ...expense,
+        date: new Date().toISOString()
+      }));
+      
+      // Wait for animation then save
+      setTimeout(() => {
+        addExpenses(expensesWithDate);
+        setPendingExpenses(null);
+      }, 300);
+    }
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current);
+      dismissTimeoutRef.current = null;
+    }
+  }, []);
+
+  const cancelPendingExpenses = useCallback(() => {
+    setIsExpensesClosing(true);
+    setTimeout(() => {
+      setPendingExpenses(null);
+    }, 300);
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current);
+      dismissTimeoutRef.current = null;
+    }
+  }, []);
+
+  const stopAutoSaveTimer = useCallback(() => {
+    if (dismissTimeoutRef.current) {
+      clearTimeout(dismissTimeoutRef.current);
+      dismissTimeoutRef.current = null;
+    }
+  }, []);
+
+  const editPendingExpense = (
+    index: number,
+    field: "amount" | "category" | "description",
+    value: string | number
+  ) => {
+    if (pendingExpenses) {
+      const updated = [...pendingExpenses];
+      if (field === "amount") {
+        updated[index][field] = Number(value);
+      } else {
+        updated[index][field] = String(value);
+      }
+      setPendingExpenses(updated);
+    }
   };
 
   const getStructuredExpensesFromImage = async (
@@ -1197,6 +1273,13 @@ Please extract all expenses from: '${text}'`,
                   getStructuredExpenses={getStructuredExpenses}
                   handleExpenseImage={handleExpenseImage}
                   handlePDFUpload={handlePDFUpload}
+                  interimTranscript={interimTranscript}
+                  pendingExpenses={pendingExpenses}
+                  confirmPendingExpenses={confirmPendingExpenses}
+                  cancelPendingExpenses={cancelPendingExpenses}
+                  editPendingExpense={editPendingExpense}
+                  stopAutoSaveTimer={stopAutoSaveTimer}
+                  isExpensesClosing={isExpensesClosing}
                 />
               }
             />

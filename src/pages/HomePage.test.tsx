@@ -8,6 +8,10 @@ describe("HomePage - Add expense flow", () => {
   const mockGetStructuredExpenses = vi.fn().mockResolvedValue(undefined);
   const mockHandleExpenseImage = vi.fn();
   const mockHandlePDFUpload = vi.fn().mockResolvedValue(undefined);
+  const mockConfirmPendingExpenses = vi.fn();
+  const mockCancelPendingExpenses = vi.fn();
+  const mockEditPendingExpense = vi.fn();
+  const mockStopAutoSaveTimer = vi.fn();
 
   const defaultProps = {
     isRecording: false,
@@ -16,6 +20,13 @@ describe("HomePage - Add expense flow", () => {
     getStructuredExpenses: mockGetStructuredExpenses,
     handleExpenseImage: mockHandleExpenseImage,
     handlePDFUpload: mockHandlePDFUpload,
+    interimTranscript: "",
+    pendingExpenses: null,
+    confirmPendingExpenses: mockConfirmPendingExpenses,
+    cancelPendingExpenses: mockCancelPendingExpenses,
+    editPendingExpense: mockEditPendingExpense,
+    stopAutoSaveTimer: mockStopAutoSaveTimer,
+    isExpensesClosing: false,
   };
 
   beforeEach(() => {
