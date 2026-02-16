@@ -1,5 +1,5 @@
 import type { Session, User } from "@supabase/supabase-js";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
 
 /** Ensure a profile row exists for the user (e.g. after Google sign-in). Creates one if missing. */
@@ -235,6 +235,8 @@ function App() {
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -404,8 +406,14 @@ function App() {
       return;
     }
 
-    // Check if already recording
+    // Check if already recording - stop it
     if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (speechTimeoutRef.current) {
+        clearTimeout(speechTimeoutRef.current);
+      }
       setIsRecording(false);
       return;
     }
@@ -441,25 +449,57 @@ function App() {
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
 
-    // Configure recognition settings for multiple expenses
+    // Configure recognition settings for better speech capture
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    recognition.interimResults = true; // Show interim results
     recognition.maxAlternatives = 3; // Get multiple alternatives for better accuracy
-    recognition.continuous = false; // Stop after first result
+    recognition.continuous = true; // Keep listening for continuous speech
+
+    let finalTranscript = "";
+    let silenceTimeout: NodeJS.Timeout | null = null;
 
     // Event handlers
     recognition.onstart = () => {
+      console.log("🎤 Speech recognition started");
       setIsRecording(true);
       setError(null); // Clear any previous errors
+      finalTranscript = "";
     };
 
     recognition.onend = () => {
+      console.log("🎤 Speech recognition ended");
       setIsRecording(false);
+      recognitionRef.current = null;
+      
+      if (silenceTimeout) {
+        clearTimeout(silenceTimeout);
+      }
+      if (speechTimeoutRef.current) {
+        clearTimeout(speechTimeoutRef.current);
+      }
+
+      // Process the final transcript if we have one
+      if (finalTranscript && finalTranscript.trim().length > 0) {
+        console.log("📝 Final transcript:", finalTranscript);
+        getStructuredExpenses(finalTranscript);
+      } else {
+        setError("No speech detected. Please try again.");
+      }
     };
 
     recognition.onerror = (event: any) => {
+      console.error("❌ Speech recognition error:", event.error);
       setIsRecording(false);
+      recognitionRef.current = null;
+      
+      if (silenceTimeout) {
+        clearTimeout(silenceTimeout);
+      }
+      if (speechTimeoutRef.current) {
+        clearTimeout(speechTimeoutRef.current);
+      }
 
       let errorMessage = "Speech recognition error";
       switch (event.error) {
@@ -468,7 +508,7 @@ function App() {
             "Microphone access denied. Please allow microphone access.";
           break;
         case "no-speech":
-          errorMessage = "No speech detected. Please speak clearly.";
+          errorMessage = "No speech detected. Please start speaking right after clicking the microphone.";
           break;
         case "audio-capture":
           errorMessage = "Audio capture failed. Please check your microphone.";
@@ -480,59 +520,66 @@ function App() {
         case "service-not-allowed":
           errorMessage = "Speech recognition service not allowed.";
           break;
+        case "aborted":
+          // Don't show error if manually stopped
+          return;
         default:
           errorMessage = `Speech recognition error: ${event.error}`;
       }
       setError(errorMessage);
     };
 
-    recognition.onnomatch = () => {
-      setIsRecording(false);
-      setError("No speech detected. Please try speaking again.");
-    };
-
     recognition.onresult = (event: any) => {
-      try {
-        // Check if we have results
-        if (event.results && event.results.length > 0) {
-          const result = event.results[0]; // Get first result
+      console.log("📊 Speech result event:", event.results.length);
+      
+      // Reset silence timeout on any speech
+      if (silenceTimeout) {
+        clearTimeout(silenceTimeout);
+      }
 
-          if (result.length > 0) {
-            // Get the best transcript (highest confidence)
-            let bestTranscript = "";
-            let bestConfidence = 0;
+      let interimTranscript = "";
 
-            for (let i = 0; i < result.length; i++) {
-              const transcript = result[i].transcript;
-              const confidence = result[i].confidence || 0;
-
-              if (confidence > bestConfidence) {
-                bestConfidence = confidence;
-                bestTranscript = transcript;
-              }
-            }
-
-            if (bestTranscript && bestTranscript.trim().length > 0) {
-              getStructuredExpenses(bestTranscript);
-            } else {
-              setError("No speech detected. Please try again.");
-            }
-          } else {
-            setError("No speech detected. Please try again.");
-          }
+      // Process all results
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + " ";
+          console.log("✅ Final result:", transcript);
         } else {
-          setError("No speech detected. Please try again.");
+          interimTranscript += transcript;
+          console.log("⏳ Interim result:", transcript);
         }
-      } catch (error) {
-        setError("Error processing speech result");
+      }
+
+      // If we have interim results, set a silence timeout to stop recording
+      if (interimTranscript || finalTranscript) {
+        silenceTimeout = setTimeout(() => {
+          console.log("🔇 Silence detected, stopping recognition");
+          if (recognitionRef.current) {
+            recognitionRef.current.stop();
+          }
+        }, 2000); // Stop after 2 seconds of silence
       }
     };
 
     // Start recognition with error handling
     try {
       recognition.start();
+      
+      // Set a maximum recording time of 30 seconds
+      speechTimeoutRef.current = setTimeout(() => {
+        console.log("⏰ Max recording time reached, stopping");
+        if (recognitionRef.current) {
+          recognitionRef.current.stop();
+        }
+      }, 30000);
+      
     } catch (error) {
+      console.error("❌ Failed to start recognition:", error);
       setError("Failed to start speech recognition. Please try again.");
+      setIsRecording(false);
+      recognitionRef.current = null;
     }
   };
 
