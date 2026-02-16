@@ -82,6 +82,47 @@ Deno.serve(async (req: Request) => {
 
     const normalizedPhone = normalizePhone(phone);
 
+    // Test/Demo wildcard: Accept test number with hardcoded OTP
+    if (normalizedPhone === "919999999999" && otp === "0007") {
+      // Update profile with test WhatsApp phone
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          whatsapp_phone: normalizedPhone,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (updateError) {
+        console.error("Error updating profile with test number:", updateError);
+        return new Response(
+          JSON.stringify({ error: "Failed to save WhatsApp number" }),
+          { 
+            status: 500, 
+            headers: { 
+              "Content-Type": "application/json",
+              ...corsHeaders
+            } 
+          }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: "WhatsApp number verified and saved successfully (test mode)",
+          phone: normalizedPhone
+        }),
+        { 
+          status: 200, 
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+
     // Fetch OTP record
     const { data: otpRecord, error: fetchError } = await supabase
       .from("whatsapp_otps")

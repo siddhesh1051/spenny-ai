@@ -155,6 +155,25 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Test/Demo wildcard: Skip actual OTP sending for test number
+    if (normalizedPhone === "919999999999") {
+      // Return success without sending actual WhatsApp message or storing OTP
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: "OTP sent successfully (test mode)",
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        }),
+        { 
+          status: 200, 
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+
     // Check if phone already exists for another user
     const { data: existingProfile, error: checkError } = await supabase
       .from("profiles")
