@@ -21,7 +21,7 @@ async function ensureProfile(user: User): Promise<void> {
   });
 }
 import AuthPage from "./pages/AuthPage";
-import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
+import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { AllTransactionsPage } from "./pages/AllTransactionsPage";
@@ -184,12 +184,22 @@ async function callGroqAPI(
   throw new Error("Failed to call Groq API after multiple retries");
 }
 
+const ROUTE_TITLES: Record<string, string> = {
+  "/transactions": "All Transactions",
+  "/analytics": "Analytics",
+  "/settings": "Settings",
+  "/whatsapp-integration": "WhatsApp Integration",
+  "/api-keys": "API Keys",
+  "/share-target": "Share Image",
+};
+
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [userGroqKey, setUserGroqKey] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const getSessionAndProfile = async () => {
@@ -1224,6 +1234,10 @@ Please extract all expenses from: '${text}'`,
 
   const userName =
     session.user?.user_metadata?.full_name || session.user?.email;
+  const pageTitle =
+    location.pathname === "/"
+      ? `Welcome Back, ${userName}!`
+      : (ROUTE_TITLES[location.pathname] ?? "Spenny AI");
 
   return (
     <>
@@ -1247,9 +1261,7 @@ Please extract all expenses from: '${text}'`,
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              <h1 className="text-lg md:text-2xl font-bold">
-                Welcome Back, {userName}!
-              </h1>
+              <h1 className="text-lg md:text-2xl font-bold">{pageTitle}</h1>
             </div>
             <ModeToggle />
           </div>

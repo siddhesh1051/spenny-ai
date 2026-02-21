@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   CardDescription,
 } from "@/components/ui/card";
 import type { User } from "@supabase/supabase-js";
@@ -115,7 +114,6 @@ export default function SettingsPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Settings</CardTitle>
         <CardDescription>Update your profile information.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -144,7 +144,7 @@ export function HomePage({
             <button
               onClick={handleMicClick}
               disabled={isLoading}
-              className="relative w-24 h-24 md:w-32 md:h-32 bg-[#1a0a30] rounded-full flex items-center justify-center text-white shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50"
+              className="cursor-pointer relative w-24 h-24 md:w-32 md:h-32 bg-[#1a0a30] rounded-full flex items-center justify-center text-white shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50"
             >
               <div
                 className="absolute w-full h-full rounded-full"
@@ -187,6 +187,12 @@ export function HomePage({
                 placeholder="Enter expenses here..."
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSaveTextExpense();
+                  }
+                }}
               />
               <DialogFooter>
                 <Button onClick={handleSaveTextExpense} disabled={isLoading}>
@@ -296,7 +302,7 @@ export function HomePage({
               {/* Close button */}
               <button
                 onClick={cancelPendingExpenses}
-                className="absolute top-4 right-4 p-1 hover:bg-muted rounded-full transition-colors z-10"
+                className="cursor-pointer absolute top-4 right-4 p-1 hover:bg-muted rounded-full transition-colors z-10"
               >
                 <X className="h-5 w-5" />
               </button>

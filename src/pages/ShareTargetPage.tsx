@@ -109,7 +109,6 @@ const ShareTargetPage: React.FC<ShareTargetPageProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
-      <h2 className="text-2xl font-bold mb-4">Share Image to Spenny AI</h2>
       {error && <div className="text-red-500 mb-4">{error}</div>}
       {imageUrl ? (
         <>
