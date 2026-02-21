@@ -111,6 +111,26 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Native scrollbar: theme-aware for light and dark mode */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-foreground) var(--muted);
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--muted);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

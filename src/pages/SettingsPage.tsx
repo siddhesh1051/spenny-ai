@@ -11,7 +11,6 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/Skeleton";
-import ApiKeysManagement from "../components/ApiKeysManagement";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -156,7 +155,6 @@ export default function SettingsPage() {
         <Button onClick={updateProfile} disabled={isSubmitting}>
           {isSubmitting ? "Saving..." : "Save Changes"}
         </Button>
-        <ApiKeysManagement />
       </CardContent>
     </Card>
   );

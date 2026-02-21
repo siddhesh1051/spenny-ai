@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2, Settings, LogOut, Receipt, MessageCircle } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut, Receipt, MessageCircle, Server } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
@@ -120,6 +120,16 @@ export function Sidebar({
             <MessageCircle className="mr-3 h-5 w-5 shrink-0" />
             WhatsApp Integration
           </NavLink>
+          <div
+            className="flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-not-allowed opacity-60 pointer-events-none select-none"
+            aria-disabled="true"
+          >
+            <Server className="mr-3 h-5 w-5 shrink-0" />
+            <span className="flex-1">MCP Server</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+              Coming soon
+            </span>
+          </div>
           <NavLink
             to="/settings"
             className={({ isActive }) =>
