@@ -39,7 +39,7 @@ export function Sidebar({
       {/* Overlay for mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden cursor-pointer"
           onClick={() => setIsOpen(false)}
         ></div>
       )}
@@ -67,7 +67,7 @@ export function Sidebar({
           <NavLink
             to="/"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -81,7 +81,7 @@ export function Sidebar({
           <NavLink
             to="/transactions"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -95,7 +95,7 @@ export function Sidebar({
           <NavLink
             to="/analytics"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -109,7 +109,7 @@ export function Sidebar({
           <NavLink
             to="/whatsapp-integration"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
@@ -123,7 +123,7 @@ export function Sidebar({
           <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap ${
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"

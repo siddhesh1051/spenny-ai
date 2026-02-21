@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   CardDescription,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -230,7 +229,6 @@ export default function WhatsAppIntegrationPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>WhatsApp Integration</CardTitle>
         <CardDescription>
           Add your WhatsApp number to add expenses via chat.
         </CardDescription>

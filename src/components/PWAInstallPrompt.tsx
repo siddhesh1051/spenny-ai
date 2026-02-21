@@ -103,13 +103,13 @@ const PWAInstallPrompt: React.FC = () => {
       </div>
       <button
         onClick={handleInstall}
-        className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium shadow hover:bg-blue-700 transition"
+        className="cursor-pointer ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium shadow hover:bg-blue-700 transition"
       >
         Install
       </button>
       <button
         onClick={handleClose}
-        className="ml-2 text-zinc-400 hover:text-zinc-200 text-xl font-bold"
+        className="cursor-pointer ml-2 text-zinc-400 hover:text-zinc-200 text-xl font-bold"
         aria-label="Dismiss"
       >
         ×

@@ -1,6 +1,14 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, Search, ChevronDown } from "lucide-react";
+import {
+  Edit,
+  Trash2,
+  Search,
+  ChevronDown,
+  Download,
+  FileSpreadsheet,
+  FileText,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +43,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Calendar } from "@/components/ui/calendar";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const categories: { [key: string]: string } = {
   food: "🍔",
@@ -72,6 +85,16 @@ export function AllTransactionsPage({
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+
+  // Export modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportStep, setExportStep] = useState<1 | 2>(1);
+  const [exportPreset, setExportPreset] = useState<
+    "last7" | "last30" | "last90" | "thisMonth" | "custom"
+  >("last30");
+  const [exportDateFrom, setExportDateFrom] = useState<string>("");
+  const [exportDateTo, setExportDateTo] = useState<string>("");
+  const [exportFormat, setExportFormat] = useState<"csv" | "pdf" | null>(null);
 
   const filteredExpenses = useMemo(() => {
     return expenses.filter((expense) => {
@@ -118,22 +141,143 @@ export function AllTransactionsPage({
     setDateTo("");
   };
 
+  // Export: get date range from preset (for a given preset id or current state)
+  const getExportDateRangeForPreset = (
+    preset: "last7" | "last30" | "last90" | "thisMonth" | "custom"
+  ): { from: string; to: string } => {
+    const today = new Date();
+    if (preset === "last7") {
+      const from = format(subDays(today, 6), "yyyy-MM-dd");
+      return { from, to: format(today, "yyyy-MM-dd") };
+    }
+    if (preset === "last30") {
+      const from = format(subDays(today, 29), "yyyy-MM-dd");
+      return { from, to: format(today, "yyyy-MM-dd") };
+    }
+    if (preset === "last90") {
+      const from = format(subDays(today, 89), "yyyy-MM-dd");
+      return { from, to: format(today, "yyyy-MM-dd") };
+    }
+    if (preset === "thisMonth") {
+      const from = format(startOfMonth(today), "yyyy-MM-dd");
+      const to = format(endOfMonth(today), "yyyy-MM-dd");
+      return { from, to };
+    }
+    return {
+      from: exportDateFrom || format(subDays(today, 29), "yyyy-MM-dd"),
+      to: exportDateTo || format(today, "yyyy-MM-dd"),
+    };
+  };
+
+  const getExportDateRange = (): { from: string; to: string } =>
+    getExportDateRangeForPreset(exportPreset);
+
+  const exportRangeExpenses = useMemo(() => {
+    const { from, to } = getExportDateRange();
+    const fromDate = new Date(from + "T00:00:00");
+    const toDate = new Date(to + "T23:59:59");
+    return expenses.filter((e) => {
+      const d = new Date(e.date);
+      return d >= fromDate && d <= toDate;
+    });
+  }, [expenses, exportPreset, exportDateFrom, exportDateTo]);
+
+  const downloadCSV = (list: Expense[], from: string, to: string) => {
+    const headers = "Date,Description,Category,Amount (₹)\n";
+    const rows = list
+      .map(
+        (e) =>
+          `${new Date(e.date).toLocaleDateString()},"${(e.description || "").replace(/"/g, '""')}",${e.category},${e.amount.toFixed(2)}`
+      )
+      .join("\n");
+    const blob = new Blob(["\uFEFF" + headers + rows], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `expenses_${from}_to_${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPDF = (list: Expense[], from: string, to: string) => {
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(14);
+    doc.text("Expenses Export", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Date range: ${from} to ${to}`, 14, 22);
+    autoTable(doc, {
+      startY: 28,
+      head: [["Date", "Description", "Category", "Amount (₹)"]],
+      body: list.map((e) => [
+        new Date(e.date).toLocaleDateString(),
+        (e.description || "").slice(0, 40),
+        e.category,
+        e.amount.toFixed(2),
+      ]),
+    });
+    doc.save(`expenses_${from}_to_${to}.pdf`);
+  };
+
+  const openExportModal = () => {
+    setExportStep(1);
+    setExportFormat(null);
+    setExportPreset("last30");
+    const today = new Date();
+    setExportDateFrom(format(subDays(today, 29), "yyyy-MM-dd"));
+    setExportDateTo(format(today, "yyyy-MM-dd"));
+    setIsExportModalOpen(true);
+  };
+
+  const handleExportNext = () => {
+    if (exportStep === 1) setExportStep(2);
+  };
+
+  const handleExportBack = () => {
+    if (exportStep === 2) setExportStep(1);
+  };
+
+  const handleExportDownload = () => {
+    if (!exportFormat) return;
+    const { from, to } = getExportDateRange();
+    const list = expenses.filter((e) => {
+      const d = new Date(e.date);
+      return d >= new Date(from + "T00:00:00") && d <= new Date(to + "T23:59:59");
+    });
+    if (exportFormat === "csv") downloadCSV(list, from, to);
+    else downloadPDF(list, from, to);
+    setIsExportModalOpen(false);
+  };
+
+  const canExportNext = () => {
+    if (exportPreset === "custom")
+      return Boolean(exportDateFrom && exportDateTo);
+    return true;
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">All Transactions</h1>
-        <p className="text-muted-foreground">
-          View and manage all your expense transactions in one place.
-        </p>
-      </div>
-
       {/* Filters section */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Filters</CardTitle>
-          <CardDescription>
-            Search by name or amount, filter by category, or pick a date range.
-          </CardDescription>
+          <div className="flex justify-between items-start gap-4">
+            <div>
+              <CardTitle className="text-base">Filters</CardTitle>
+              <CardDescription>
+                Search by name or amount, filter by category, or pick a date range.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openExportModal}
+              className="shrink-0 gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-3">
@@ -394,6 +538,195 @@ export function AllTransactionsPage({
           )}
         </CardContent>
       </Card>
+
+      {/* Export Modal */}
+      <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Export expenses</DialogTitle>
+            <DialogDescription>
+              {exportStep === 1
+                ? "Select a date range for the export."
+                : "Choose export format and download."}
+            </DialogDescription>
+          </DialogHeader>
+          {exportStep === 1 ? (
+            <div className="grid gap-4 py-2">
+              <div className="flex gap-6">
+                <div className="flex flex-col gap-1.5 border-r pr-6 shrink-0">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">
+                    Presets
+                  </p>
+                  {(
+                    [
+                      { id: "last7", label: "Last 7 days" },
+                      { id: "last30", label: "Last 30 days" },
+                      { id: "last90", label: "Last 90 days" },
+                      { id: "thisMonth", label: "This month" },
+                      { id: "custom", label: "Custom" },
+                    ] as const
+                  ).map(({ id, label }) => (
+                    <Button
+                      key={id}
+                      variant={exportPreset === id ? "secondary" : "ghost"}
+                      size="sm"
+                      className="justify-start"
+                      onClick={() => {
+                        setExportPreset(id);
+                        if (id !== "custom") {
+                          const { from, to } = getExportDateRangeForPreset(id);
+                          setExportDateFrom(from);
+                          setExportDateTo(to);
+                        }
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex-1 min-w-0 flex justify-center">
+                  <Calendar
+                    key={exportPreset}
+                    mode="range"
+                    defaultMonth={
+                      exportDateFrom
+                        ? new Date(exportDateFrom + "T00:00:00")
+                        : new Date()
+                    }
+                    selected={
+                      exportDateFrom || exportDateTo
+                        ? {
+                            from: exportDateFrom
+                              ? new Date(exportDateFrom + "T00:00:00")
+                              : undefined,
+                            to: exportDateTo
+                              ? new Date(exportDateTo + "T23:59:59")
+                              : undefined,
+                          }
+                        : undefined
+                    }
+                    onSelect={(range: DateRange | undefined) => {
+                      setExportPreset("custom");
+                      setExportDateFrom(
+                        range?.from ? format(range.from, "yyyy-MM-dd") : ""
+                      );
+                      setExportDateTo(
+                        range?.to ? format(range.to, "yyyy-MM-dd") : ""
+                      );
+                    }}
+                    numberOfMonths={2}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 py-2">
+              <p className="text-sm font-medium text-muted-foreground">
+                Choose export format
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setExportFormat("csv")}
+                  className={`
+                    cursor-pointer group relative flex flex-col items-center gap-3 rounded-xl border-2 p-6
+                    transition-all duration-200 ease-out
+                    hover:border-primary/70 hover:bg-primary/5 hover:shadow-md
+                    hover:ring-2 hover:ring-white/50 dark:hover:ring-white/20
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                    ${exportFormat === "csv"
+                      ? "border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30"
+                      : "border-border bg-muted/30"
+                    }
+                  `}
+                >
+                  <div
+                    className={`
+                    flex h-12 w-12 items-center justify-center rounded-lg transition-colors
+                    ${exportFormat === "csv"
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground group-hover:bg-primary/15 group-hover:text-primary"
+                    }
+                  `}
+                  >
+                    <FileSpreadsheet className="h-7 w-7" strokeWidth={1.75} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-foreground">CSV</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Spreadsheet (Excel, Sheets)
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExportFormat("pdf")}
+                  className={`
+                    cursor-pointer group relative flex flex-col items-center gap-3 rounded-xl border-2 p-6
+                    transition-all duration-200 ease-out
+                    hover:border-primary/70 hover:bg-primary/5 hover:shadow-md
+                    hover:ring-2 hover:ring-white/50 dark:hover:ring-white/20
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                    ${exportFormat === "pdf"
+                      ? "border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30"
+                      : "border-border bg-muted/30"
+                    }
+                  `}
+                >
+                  <div
+                    className={`
+                    flex h-12 w-12 items-center justify-center rounded-lg transition-colors
+                    ${exportFormat === "pdf"
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground group-hover:bg-primary/15 group-hover:text-primary"
+                    }
+                  `}
+                  >
+                    <FileText className="h-7 w-7" strokeWidth={1.75} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-foreground">PDF</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Document
+                    </p>
+                  </div>
+                </button>
+              </div>
+              {exportRangeExpenses.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {exportRangeExpenses.length} transaction
+                  {exportRangeExpenses.length !== 1 ? "s" : ""} in selected range.
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            {exportStep === 1 ? (
+              <>
+                <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleExportNext} disabled={!canExportNext()}>
+                  Next
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={handleExportBack}>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleExportDownload}
+                  disabled={!exportFormat || exportRangeExpenses.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       {editingExpense && (

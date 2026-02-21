@@ -152,9 +152,6 @@ export function AnalyticsPage({
 
   return (
     <div>
-      <h1 className="text-2xl md:text-3xl font-bold mb-6">
-        Analytics Dashboard
-      </h1>
       {expenses.length === 0 ? (
         isLoading ? (
           <div className="grid gap-4 md:gap-6">
