@@ -14,7 +14,7 @@
 - [Project Structure](#project-structure)
 - [Testing](#testing)
 - [WhatsApp Integration (Optional)](#whatsapp-integration-optional)
-- [PWA & Share Target](#pwa--share-target)
+- [PWA](#pwa--share-target)
 - [License](#license)
 
 ---
@@ -41,7 +41,6 @@
 
 - **WhatsApp** – Link your WhatsApp number (OTP verification). Send text or voice messages to log expenses; ask questions (“How much did I spend last month?”); request exports (“Export last 30 days as CSV”) and receive the file in chat. Uses Supabase Edge Functions: `whatsapp-webhook`, `send-whatsapp-otp`, `verify-whatsapp-otp`.
 - **API Keys** – Create and manage API keys for secure access (e.g. MCP or other integrations). Keys are stored in Supabase and can be revoked.
-- **Share target** – Install as PWA and use “Share to Spenny AI” from other apps to share an image; it opens the app and runs receipt extraction on the shared image.
 - **PWA** – Installable app with offline-ready shell and share target for images.
 
 ### Data & Categories
@@ -62,7 +61,7 @@
 | **AI**       | Groq (llama-3.1-8b-instant for text, llama-3.2-11b-vision-preview for images/PDFs, Whisper for audio) |
 | **Charts**   | Recharts |
 | **PDF export** | jsPDF + jspdf-autotable |
-| **PWA**      | vite-plugin-pwa (manifest, service worker, share target) |
+| **PWA**      | vite-plugin-pwa (manifest, service worker) |
 | **Testing**  | Vitest, React Testing Library, Playwright (E2E) |
 
 ---
@@ -213,7 +212,6 @@ Auth-page E2E runs without extra config. Full flow (sign in → add expense → 
 ## PWA & Share Target
 
 - The app is a PWA (Vite PWA plugin): installable, with a share target for **images**.
-- When installed, “Share to Spenny AI” from another app sends the image to `/share-target`; the app runs receipt extraction on it and shows the result on the home flow.
 
 ---
 
