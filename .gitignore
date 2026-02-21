@@ -25,6 +25,9 @@ dist-ssr
 .env
 .env.e2e
 
+# Supabase CLI generated files
+supabase/.temp/
+
 # Playwright
 test-results
 playwright-report

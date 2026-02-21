@@ -8,6 +8,8 @@
 //   GROQ_API_KEY             - Groq API key for expense parsing
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { jsPDF } from "npm:jspdf";
+import autoTable from "npm:jspdf-autotable";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -267,6 +269,23 @@ Reply with ONLY one word: expense OR query OR export OR conversation`;
 const EXPORT_BUCKET = "whatsapp-exports";
 const SIGNED_URL_EXPIRY_SEC = 3600; // 1 hour for WhatsApp to fetch the document
 
+/** Create the export bucket if it does not exist (idempotent). Uses service role. */
+async function ensureExportBucket(supabase: any): Promise<void> {
+  const { error } = await supabase.storage.createBucket(EXPORT_BUCKET, {
+    public: false,
+    fileSizeLimit: "10MB",
+    allowedMimeTypes: ["text/csv", "application/pdf"],
+  });
+  if (error) {
+    const msg = (error as { message?: string }).message ?? String(error);
+    if (msg.includes("already exists") || msg.includes("BucketAlreadyExists") || (error as { error?: string }).error === "BucketAlreadyExists") {
+      return; // bucket exists, ok
+    }
+    console.error("Export bucket create failed:", error);
+    throw new Error(`Bucket unavailable: ${msg}`);
+  }
+}
+
 interface ExportStateRow {
   phone: string;
   user_id: string;
@@ -336,11 +355,130 @@ function parseExportPeriod(text: string): { from: string; to: string } | null {
   return null;
 }
 
-/** Parse format choice: "1"|"2" or "csv"|"pdf" or "one"/"two". Returns 'csv' | 'pdf' or null. */
+/** Parse any date range from user text (Groq): "first 2 weeks of last month", "21/01/2026 to 31-01-2026", "1st jan to today", etc. */
+async function parseDateRangeWithGroq(
+  text: string,
+  apiKey: string
+): Promise<{ from: string; to: string } | null> {
+  const today = new Date().toISOString().split("T")[0];
+  const prompt = `You parse a date range from the user's message into exactly two dates.
+
+Today's date: ${today}
+
+Rules:
+- Accept any format: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, "1st Jan 2026", "Jan 1 to today", "first 2 weeks of last month", "21/01/2026 to 31-01-2026", "jan 1 to today", "last jan" (January just passed or last year's January), etc.
+- If only one date given, use it for both start and end, or infer end as today if it sounds like "from X onwards".
+- "today" = ${today}. "yesterday" = yesterday's date.
+- Return JSON only: { "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }. start_date must be <= end_date.
+- If the message cannot be parsed as a date range, return: { "start_date": null, "end_date": null }
+
+User message: "${text}"
+
+Return ONLY the JSON object.`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: 80,
+    }),
+  });
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const raw = (data.choices?.[0]?.message?.content || "")
+    .replace(/```json?/g, "")
+    .replace(/```/g, "")
+    .trim();
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.start_date && parsed?.end_date) {
+      let from = parsed.start_date;
+      let to = parsed.end_date;
+      if (from > to) {
+        [from, to] = [to, from];
+      }
+      return { from, to };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/** Extract period and format from an export message (Groq): "export last 30 days csv", "send expenses 1st jan to today as pdf", etc. */
+async function parseExportIntentFromMessage(
+  text: string,
+  apiKey: string
+): Promise<{ start_date: string | null; end_date: string | null; format: "csv" | "pdf" | null }> {
+  const today = new Date().toISOString().split("T")[0];
+  const prompt = `The user wants to export/download their expenses. Extract date range and format from their message.
+
+Today's date: ${today}
+
+Extract:
+1. start_date: "YYYY-MM-DD" or null (if they said a period like "last 30 days", "from 1st jan", "21/01/2026 to 31-01-2026", "first 2 weeks of last month", "jan 1 to today", etc.)
+2. end_date: "YYYY-MM-DD" or null
+3. format: "csv" or "pdf" or null (if they said "csv", "as csv", "in pdf", "pdf", "send csv", etc.)
+
+Accept any date format: DD/MM/YYYY, DD-MM-YYYY, "1st Jan", "Jan 1 to today", "last month", "first 2 weeks of last month". start_date must be <= end_date.
+If only one date or "from X" then end_date can be today. If they don't mention dates, return null for both. If they don't mention format, return null for format.
+
+User message: "${text}"
+
+Return ONLY a JSON object: { "start_date": "YYYY-MM-DD" or null, "end_date": "YYYY-MM-DD" or null, "format": "csv" or "pdf" or null }`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: 100,
+    }),
+  });
+
+  if (!res.ok) {
+    return { start_date: null, end_date: null, format: null };
+  }
+
+  const data = await res.json();
+  const raw = (data.choices?.[0]?.message?.content || "")
+    .replace(/```json?/g, "")
+    .replace(/```/g, "")
+    .trim();
+  try {
+    const parsed = JSON.parse(raw);
+    let start = parsed?.start_date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.start_date) ? parsed.start_date : null;
+    let end = parsed?.end_date && /^\d{4}-\d{2}-\d{2}$/.test(parsed.end_date) ? parsed.end_date : null;
+    if (start && end && start > end) {
+      [start, end] = [end, start];
+    }
+    const format = parsed?.format === "csv" || parsed?.format === "pdf" ? parsed.format : null;
+    return { start_date: start, end_date: end, format };
+  } catch {
+    return { start_date: null, end_date: null, format: null };
+  }
+}
+
+/** Parse format choice: "1"/"2", "one"/"two", "csv"/"pdf", or phrases like "send csv", "I want pdf". Returns 'csv' | 'pdf' or null. */
 function parseExportFormat(text: string): "csv" | "pdf" | null {
   const t = text.trim().toLowerCase();
   if (/^1$|^one$|^csv$/.test(t)) return "csv";
   if (/^2$|^two$|^pdf$/.test(t)) return "pdf";
+  if (t.includes("pdf")) return "pdf";
+  if (t.includes("csv")) return "csv";
   return null;
 }
 
@@ -354,7 +492,32 @@ function generateExportCSV(expenses: Array<{ date: string; description: string; 
   return "\uFEFF" + header + rows.join("\n");
 }
 
-/** Upload CSV to Storage and return a signed URL. */
+/** Generate PDF as Uint8Array for expenses (landscape, table). */
+function generateExportPDF(
+  expenses: Array<{ date: string; description: string; category: string; amount: number }>,
+  dateFrom: string,
+  dateTo: string
+): Uint8Array {
+  const doc = new jsPDF({ orientation: "landscape" });
+  doc.setFontSize(14);
+  doc.text("Expenses Export", 14, 15);
+  doc.setFontSize(10);
+  doc.text(`Date range: ${dateFrom} to ${dateTo}`, 14, 22);
+  autoTable(doc, {
+    startY: 28,
+    head: [["Date", "Description", "Category", "Amount (₹)"]],
+    body: expenses.map((e) => [
+      new Date(e.date).toISOString().split("T")[0],
+      (e.description || "").slice(0, 40),
+      e.category,
+      e.amount.toFixed(2),
+    ]),
+  });
+  const out = doc.output("arraybuffer");
+  return new Uint8Array(out instanceof ArrayBuffer ? out : (out as unknown as ArrayBuffer));
+}
+
+/** Upload export file (CSV or PDF) to Storage and return a signed URL. Ensures bucket exists first. */
 async function uploadExportAndGetSignedUrl(
   supabase: any,
   phone: string,
@@ -362,6 +525,7 @@ async function uploadExportAndGetSignedUrl(
   contentType: string,
   body: string | Uint8Array
 ): Promise<string> {
+  await ensureExportBucket(supabase);
   const path = `${phone}/${Date.now()}_${filename}`;
   const { error: uploadError } = await supabase.storage.from(EXPORT_BUCKET).upload(path, body, {
     contentType,
@@ -379,6 +543,104 @@ async function uploadExportAndGetSignedUrl(
     throw new Error("Could not create download link");
   }
   return signed.signedUrl;
+}
+
+/** Fetch expenses, generate CSV, upload, send document. Used when we have both period and format. */
+async function doExportAndSend(
+  supabase: any,
+  senderPhone: string,
+  userId: string,
+  dateFrom: string,
+  dateTo: string,
+  formatChoice: "csv" | "pdf",
+  phoneNumberId: string,
+  token: string
+): Promise<void> {
+  const fromTs = `${dateFrom}T00:00:00.000Z`;
+  const toTs = `${dateTo}T23:59:59.999Z`;
+
+  const { data: expenses, error: fetchErr } = await supabase
+    .from("expenses")
+    .select("date, description, category, amount")
+    .eq("user_id", userId)
+    .gte("date", fromTs)
+    .lte("date", toTs)
+    .order("date", { ascending: true });
+
+  if (fetchErr) {
+    console.error("Export fetch error:", fetchErr);
+    await sendWhatsAppReply(
+      senderPhone,
+      "Something went wrong fetching your expenses. Please try again.",
+      phoneNumberId,
+      token
+    );
+    return;
+  }
+
+  if (!expenses || expenses.length === 0) {
+    await sendWhatsAppReply(
+      senderPhone,
+      `No expenses found between ${dateFrom} and ${dateTo}. Try a different period.`,
+      phoneNumberId,
+      token
+    );
+    return;
+  }
+
+  try {
+    if (formatChoice === "csv") {
+      const csvContent = generateExportCSV(expenses);
+      const filename = `expenses_${dateFrom}_to_${dateTo}.csv`;
+      const signedUrl = await uploadExportAndGetSignedUrl(
+        supabase,
+        senderPhone,
+        filename,
+        "text/csv; charset=utf-8",
+        new TextEncoder().encode(csvContent)
+      );
+      await sendWhatsAppDocument(
+        senderPhone,
+        signedUrl,
+        filename,
+        `Your expenses (${dateFrom} to ${dateTo}). ${expenses.length} transactions.`,
+        phoneNumberId,
+        token
+      );
+    } else {
+      const pdfBytes = generateExportPDF(expenses, dateFrom, dateTo);
+      const filename = `expenses_${dateFrom}_to_${dateTo}.pdf`;
+      const signedUrl = await uploadExportAndGetSignedUrl(
+        supabase,
+        senderPhone,
+        filename,
+        "application/pdf",
+        pdfBytes
+      );
+      await sendWhatsAppDocument(
+        senderPhone,
+        signedUrl,
+        filename,
+        `Your expenses (${dateFrom} to ${dateTo}). ${expenses.length} transactions.`,
+        phoneNumberId,
+        token
+      );
+    }
+    await sendWhatsAppReply(
+      senderPhone,
+      `✅ Sent your expense report (${expenses.length} transactions). Link expires in 1 hour.`,
+      phoneNumberId,
+      token
+    );
+  } catch (uploadErr) {
+    console.error("Export upload/send error:", uploadErr);
+    await sendWhatsAppReply(
+      senderPhone,
+      "Could not generate or send the file. The export bucket will be created automatically on first use — please try again.",
+      phoneNumberId,
+      token
+    );
+  }
 }
 
 /** Reply for general conversation (greetings, "what can you do", etc.) */
@@ -948,27 +1210,45 @@ Deno.serve(async (req: Request) => {
         }
 
         if (exportState.step === 1) {
-          const period = parseExportPeriod(messageText);
+          let period: { from: string; to: string } | null = parseExportPeriod(messageText);
+          if (!period) {
+            period = await parseDateRangeWithGroq(messageText, groqKey);
+          }
           if (period) {
-            await upsertExportState(
-              supabase,
-              senderPhone,
-              userId,
-              2,
-              period.from,
-              period.to,
-              null
-            );
-            await sendWhatsAppReply(
-              senderPhone,
-              "Send as *CSV* or *PDF*?\n\nReply *1* for CSV\nReply *2* for PDF\n\nOr say *cancel* to cancel.",
-              WHATSAPP_PHONE_NUMBER_ID,
-              WHATSAPP_TOKEN
-            );
+            const formatPrefilled = exportState.format as "csv" | "pdf" | null;
+            if (formatPrefilled) {
+              await doExportAndSend(
+                supabase,
+                senderPhone,
+                userId,
+                period.from,
+                period.to,
+                formatPrefilled,
+                WHATSAPP_PHONE_NUMBER_ID,
+                WHATSAPP_TOKEN
+              );
+              await clearExportState(supabase, senderPhone);
+            } else {
+              await upsertExportState(
+                supabase,
+                senderPhone,
+                userId,
+                2,
+                period.from,
+                period.to,
+                null
+              );
+              await sendWhatsAppReply(
+                senderPhone,
+                "Send as *CSV* or *PDF*?\n\nReply *1* or *csv* for CSV\nReply *2* or *pdf* for PDF\n\nOr say *cancel* to cancel.",
+                WHATSAPP_PHONE_NUMBER_ID,
+                WHATSAPP_TOKEN
+              );
+            }
           } else {
             await sendWhatsAppReply(
               senderPhone,
-              "Please reply with:\n*1* — Last 7 days\n*2* — Last 30 days\n*3* — Last 90 days\n*4* — This month\n\nOr say *cancel* to cancel.",
+              "I couldn't understand the period. Try:\n• *1* — Last 7 days, *2* — Last 30 days, *3* — Last 90 days, *4* — This month\n• Or say a range: \"1st Jan to today\", \"21/01/2026 to 31/01/2026\", \"first 2 weeks of last month\"\n\nOr say *cancel* to cancel.",
               WHATSAPP_PHONE_NUMBER_ID,
               WHATSAPP_TOKEN
             );
@@ -979,112 +1259,88 @@ Deno.serve(async (req: Request) => {
         if (exportState.step === 2) {
           const formatChoice = parseExportFormat(messageText);
           if (formatChoice) {
-            const dateFrom = exportState.date_from!;
-            const dateTo = exportState.date_to!;
-            const fromTs = `${dateFrom}T00:00:00.000Z`;
-            const toTs = `${dateTo}T23:59:59.999Z`;
-
-            const { data: expenses, error: fetchErr } = await supabase
-              .from("expenses")
-              .select("date, description, category, amount")
-              .eq("user_id", userId)
-              .gte("date", fromTs)
-              .lte("date", toTs)
-              .order("date", { ascending: true });
-
-            if (fetchErr) {
-              console.error("Export fetch error:", fetchErr);
-              await sendWhatsAppReply(
-                senderPhone,
-                "Something went wrong fetching your expenses. Please try again.",
-                WHATSAPP_PHONE_NUMBER_ID,
-                WHATSAPP_TOKEN
-              );
-              await clearExportState(supabase, senderPhone);
-              return new Response("OK", { status: 200 });
-            }
-
-            if (!expenses || expenses.length === 0) {
-              await sendWhatsAppReply(
-                senderPhone,
-                `No expenses found between ${dateFrom} and ${dateTo}. Try a different period.`,
-                WHATSAPP_PHONE_NUMBER_ID,
-                WHATSAPP_TOKEN
-              );
-              await clearExportState(supabase, senderPhone);
-              return new Response("OK", { status: 200 });
-            }
-
-            if (formatChoice === "csv") {
-              try {
-                const csvContent = generateExportCSV(expenses);
-                const filename = `expenses_${dateFrom}_to_${dateTo}.csv`;
-                const signedUrl = await uploadExportAndGetSignedUrl(
-                  supabase,
-                  senderPhone,
-                  filename,
-                  "text/csv; charset=utf-8",
-                  new TextEncoder().encode(csvContent)
-                );
-                await sendWhatsAppDocument(
-                  senderPhone,
-                  signedUrl,
-                  filename,
-                  `Your expenses (${dateFrom} to ${dateTo}). ${expenses.length} transactions.`,
-                  WHATSAPP_PHONE_NUMBER_ID,
-                  WHATSAPP_TOKEN
-                );
-                await sendWhatsAppReply(
-                  senderPhone,
-                  `✅ Sent your expense report (${expenses.length} transactions). Link expires in 1 hour.`,
-                  WHATSAPP_PHONE_NUMBER_ID,
-                  WHATSAPP_TOKEN
-                );
-              } catch (uploadErr) {
-                console.error("Export upload/send error:", uploadErr);
-                await sendWhatsAppReply(
-                  senderPhone,
-                  "Could not generate the file. Make sure the *whatsapp-exports* storage bucket exists. For PDF export use the Spenny AI app.",
-                  WHATSAPP_PHONE_NUMBER_ID,
-                  WHATSAPP_TOKEN
-                );
-              }
-              await clearExportState(supabase, senderPhone);
-              return new Response("OK", { status: 200 });
-            }
-
-            // PDF: not implemented in edge function; suggest app
-            await sendWhatsAppReply(
+            await doExportAndSend(
+              supabase,
               senderPhone,
-              "PDF export is available in the Spenny AI app (All Transactions → Export). I've sent your CSV for this period.",
+              userId,
+              exportState.date_from!,
+              exportState.date_to!,
+              formatChoice,
               WHATSAPP_PHONE_NUMBER_ID,
               WHATSAPP_TOKEN
             );
             await clearExportState(supabase, senderPhone);
-            return new Response("OK", { status: 200 });
+          } else {
+            await sendWhatsAppReply(
+              senderPhone,
+              "Reply *1* or *csv* for CSV, *2* or *pdf* for PDF.\n\nOr say *cancel* to cancel.",
+              WHATSAPP_PHONE_NUMBER_ID,
+              WHATSAPP_TOKEN
+            );
           }
-
-          await sendWhatsAppReply(
-            senderPhone,
-            "Reply *1* for CSV or *2* for PDF.\n\nOr say *cancel* to cancel.",
-            WHATSAPP_PHONE_NUMBER_ID,
-            WHATSAPP_TOKEN
-          );
           return new Response("OK", { status: 200 });
         }
       }
 
-      // ── New export request (no state): start flow ──
+      // ── New export request (no state): parse message for period/format, or start flow ──
       if (messageText.trim().toLowerCase() === "export") {
         intent = "export";
       } else {
         intent = await classifyIntent(messageText, groqKey);
       }
       if (intent === "export") {
+        const parsed = await parseExportIntentFromMessage(messageText, groqKey);
+        const hasPeriod = parsed.start_date && parsed.end_date;
+        const hasFormat = parsed.format !== null;
+
+        if (hasPeriod && hasFormat) {
+          await doExportAndSend(
+            supabase,
+            senderPhone,
+            userId,
+            parsed.start_date!,
+            parsed.end_date!,
+            parsed.format!,
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+          return new Response("OK", { status: 200 });
+        }
+
+        if (hasPeriod) {
+          await upsertExportState(
+            supabase,
+            senderPhone,
+            userId,
+            2,
+            parsed.start_date!,
+            parsed.end_date!,
+            null
+          );
+          await sendWhatsAppReply(
+            senderPhone,
+            "Send as *CSV* or *PDF*?\n\nReply *1* or *csv* for CSV\nReply *2* or *pdf* for PDF\n\nOr say *cancel* to cancel.",
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+          return new Response("OK", { status: 200 });
+        }
+
+        if (hasFormat) {
+          await upsertExportState(supabase, senderPhone, userId, 1, null, null, parsed.format);
+          await sendWhatsAppReply(
+            senderPhone,
+            "📤 *Which period?* Say anything, for example:\n• *1* — Last 7 days, *2* — Last 30 days, *3* — Last 90 days, *4* — This month\n• \"1st Jan to today\", \"21/01/2026 to 31/01/2026\"\n• \"first 2 weeks of last month\"\n\nOr say *cancel* to cancel.",
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+          return new Response("OK", { status: 200 });
+        }
+
         await upsertExportState(supabase, senderPhone, userId, 1, null, null, null);
         await sendWhatsAppReply(
           senderPhone,
-          "📤 *Export your expenses*\n\nWhich period?\nReply with:\n*1* — Last 7 days\n*2* — Last 30 days\n*3* — Last 90 days\n*4* — This month\n\nOr say *cancel* to cancel.",
+          "📤 *Export your expenses*\n\nWhich period? Say anything, for example:\n• *1* — Last 7 days, *2* — Last 30 days, *3* — Last 90 days, *4* — This month\n• \"1st Jan to today\", \"21/01/2026 to 31/01/2026\"\n• \"first 2 weeks of last month\"\n\nOr say *cancel* to cancel.",
           WHATSAPP_PHONE_NUMBER_ID,
           WHATSAPP_TOKEN
         );
