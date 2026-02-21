@@ -21,7 +21,7 @@ async function ensureProfile(user: User): Promise<void> {
   });
 }
 import AuthPage from "./pages/AuthPage";
-import { Routes, Route, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { AllTransactionsPage } from "./pages/AllTransactionsPage";
@@ -190,6 +190,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/settings": "Settings",
   "/whatsapp-integration": "WhatsApp Integration",
   "/api-keys": "API Keys",
+  "/mcp-server": "MCP Server",
   "/share-target": "Share Image",
 };
 
@@ -563,7 +564,7 @@ function App() {
       // Process all results
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
-        
+
         if (event.results[i].isFinal) {
           finalTranscript += transcript + " ";
         } else {
@@ -595,7 +596,7 @@ function App() {
           recognitionRef.current.stop();
         }
       }, 30000);
-      
+
     } catch (error) {
       setError("Failed to start speech recognition. Please try again.");
       setIsRecording(false);
@@ -743,13 +744,13 @@ Please extract all expenses from: '${text}'`,
     if (pendingExpensesRef.current) {
       // Trigger closing animation
       setIsExpensesClosing(true);
-      
+
       // Add date to each expense before saving
       const expensesWithDate = pendingExpensesRef.current.map(expense => ({
         ...expense,
         date: new Date().toISOString()
       }));
-      
+
       // Wait for animation then save
       setTimeout(() => {
         addExpenses(expensesWithDate);
@@ -1315,6 +1316,8 @@ Please extract all expenses from: '${text}'`,
             <Route path="/whatsapp-integration" element={<WhatsAppIntegrationPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
+            {/* MCP Server route protected until feature is enabled */}
+            <Route path="/mcp-server" element={<Navigate to="/" replace />} />
             <Route
               path="/share-target"
               element={
