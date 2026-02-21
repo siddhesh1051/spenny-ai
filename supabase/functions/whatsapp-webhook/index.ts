@@ -73,6 +73,42 @@ async function sendWhatsAppReply(
   }
 }
 
+/** Send a WhatsApp document by URL (e.g. signed Storage URL) */
+async function sendWhatsAppDocument(
+  to: string,
+  documentUrl: string,
+  filename: string,
+  caption: string,
+  phoneNumberId: string,
+  token: string
+): Promise<void> {
+  const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "document",
+      document: {
+        link: documentUrl,
+        caption,
+        filename,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error("WhatsApp document send failed:", res.status, errBody);
+  } else {
+    console.log("WhatsApp document sent to", to, filename);
+  }
+}
+
 /** Download media from WhatsApp by media ID */
 async function downloadWhatsAppMedia(
   mediaId: string,
@@ -157,12 +193,24 @@ async function transcribeAudio(
   return typeof text === "string" ? text : "";
 }
 
-/** Classify user intent: expense entry, expense question, or general conversation */
+/** Classify user intent: expense entry, expense question, export, or general conversation */
 async function classifyIntent(
   text: string,
   apiKey: string
-): Promise<"expense" | "query" | "conversation"> {
+): Promise<"expense" | "query" | "conversation" | "export"> {
   const trimmed = text.trim().toLowerCase();
+  // Fast path: export / download requests
+  const exportPatterns = [
+    /^export\s*(my\s*)?expenses?$/i,
+    /^download\s*(my\s*)?expenses?$/i,
+    /^send\s*(me\s*)?(my\s*)?expenses?$/i,
+    /^export\s*(csv|pdf)$/i,
+    /^download\s*(csv|pdf)$/i,
+    /^get\s*(my\s*)?expenses?\s*(file|csv|pdf)?$/i,
+  ];
+  if (exportPatterns.some((p) => p.test(trimmed))) {
+    return "export";
+  }
   // Fast path: obvious greetings or capability questions → conversation
   const conversationPatterns = [
     /^(hi|hello|hey|hiya|hey there|hola|namaste|good morning|good afternoon|good evening)[\s!?.,]*$/i,
@@ -173,15 +221,16 @@ async function classifyIntent(
     return "conversation";
   }
 
-  const prompt = `You are an intent classifier for an expense tracking app. Classify the following user message into exactly one of three categories:
+  const prompt = `You are an intent classifier for an expense tracking app. Classify the following user message into exactly one of four categories:
 
-1. "expense" — the user is logging/adding a new expense (e.g. "spent 50 on coffee", "lunch 200", "paid rent 15000", "auto 30 movie 500")
-2. "query" — the user is asking a question about their expenses, requesting a summary, analysis, or information (e.g. "how much did I spend last month", "show my food expenses", "what's my average spending", "summarize january", "top categories", "compare this month vs last month")
-3. "conversation" — greetings, small talk, asking what the bot can do, thanks, goodbye, or anything that is NOT logging an expense and NOT a question about expense data (e.g. "hi", "hello", "what can you do", "who are you", "thanks", "bye")
+1. "expense" — the user is logging/adding a new expense (e.g. "spent 50 on coffee", "lunch 200", "paid rent 15000")
+2. "query" — the user is asking a question about their expenses, requesting a summary or information (e.g. "how much did I spend last month", "show my food expenses", "top categories")
+3. "export" — the user wants to download/export/send their expense data as a file (e.g. "export my expenses", "download expenses", "send me my expenses csv", "I want to export")
+4. "conversation" — greetings, small talk, thanks, goodbye, or anything that is NOT logging an expense, NOT a question about expense data, and NOT a request to export/download (e.g. "hi", "what can you do", "thanks", "bye")
 
 Message: "${text}"
 
-Reply with ONLY one word: expense OR query OR conversation`;
+Reply with ONLY one word: expense OR query OR export OR conversation`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -208,8 +257,128 @@ Reply with ONLY one word: expense OR query OR conversation`;
     .toLowerCase();
 
   if (answer.includes("conversation")) return "conversation";
+  if (answer.includes("export")) return "export";
   if (answer.includes("query")) return "query";
   return "expense";
+}
+
+// ── Export flow: follow-up questions (period → format) ───────────────────────
+
+const EXPORT_BUCKET = "whatsapp-exports";
+const SIGNED_URL_EXPIRY_SEC = 3600; // 1 hour for WhatsApp to fetch the document
+
+interface ExportStateRow {
+  phone: string;
+  user_id: string;
+  step: number;
+  date_from: string | null;
+  date_to: string | null;
+  format: string | null;
+}
+
+function getExportState(supabase: any, phone: string): Promise<ExportStateRow | null> {
+  return supabase
+    .from("whatsapp_export_state")
+    .select("phone, user_id, step, date_from, date_to, format")
+    .eq("phone", phone)
+    .maybeSingle()
+    .then((r: { data: ExportStateRow | null }) => r.data ?? null);
+}
+
+function upsertExportState(
+  supabase: any,
+  phone: string,
+  userId: string,
+  step: number,
+  dateFrom: string | null,
+  dateTo: string | null,
+  format: string | null
+): Promise<void> {
+  return supabase
+    .from("whatsapp_export_state")
+    .upsert(
+      { phone, user_id: userId, step, date_from: dateFrom, date_to: dateTo, format },
+      { onConflict: "phone" }
+    )
+    .then(() => {});
+}
+
+function clearExportState(supabase: any, phone: string): Promise<void> {
+  return supabase.from("whatsapp_export_state").delete().eq("phone", phone).then(() => {});
+}
+
+/** Parse period choice: "1"|"2"|"3"|"4" or "one"/"last 7" etc. Returns { from, to } in YYYY-MM-DD or null. */
+function parseExportPeriod(text: string): { from: string; to: string } | null {
+  const t = text.trim().toLowerCase().replace(/\s+/g, " ");
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+
+  if (/^1$|^one$|^last\s*7|^7\s*days?/.test(t)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 6);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/^2$|^two$|^last\s*30|^30\s*days?/.test(t)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 29);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/^3$|^three$|^last\s*90|^90\s*days?/.test(t)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 89);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/^4$|^four$|^this\s*month|^current\s*month/.test(t)) {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: from.toISOString().split("T")[0], to: to.toISOString().split("T")[0] };
+  }
+  return null;
+}
+
+/** Parse format choice: "1"|"2" or "csv"|"pdf" or "one"/"two". Returns 'csv' | 'pdf' or null. */
+function parseExportFormat(text: string): "csv" | "pdf" | null {
+  const t = text.trim().toLowerCase();
+  if (/^1$|^one$|^csv$/.test(t)) return "csv";
+  if (/^2$|^two$|^pdf$/.test(t)) return "pdf";
+  return null;
+}
+
+/** Generate CSV content for expenses (UTF-8 with BOM). */
+function generateExportCSV(expenses: Array<{ date: string; description: string; category: string; amount: number }>): string {
+  const header = "Date,Description,Category,Amount (₹)\n";
+  const rows = expenses.map(
+    (e) =>
+      `${new Date(e.date).toISOString().split("T")[0]},"${(e.description || "").replace(/"/g, '""')}",${e.category},${e.amount.toFixed(2)}`
+  );
+  return "\uFEFF" + header + rows.join("\n");
+}
+
+/** Upload CSV to Storage and return a signed URL. */
+async function uploadExportAndGetSignedUrl(
+  supabase: any,
+  phone: string,
+  filename: string,
+  contentType: string,
+  body: string | Uint8Array
+): Promise<string> {
+  const path = `${phone}/${Date.now()}_${filename}`;
+  const { error: uploadError } = await supabase.storage.from(EXPORT_BUCKET).upload(path, body, {
+    contentType,
+    upsert: false,
+  });
+  if (uploadError) {
+    console.error("Export upload failed:", uploadError);
+    throw new Error(`Upload failed: ${uploadError.message}`);
+  }
+  const { data: signed, error: signError } = await supabase.storage
+    .from(EXPORT_BUCKET)
+    .createSignedUrl(path, SIGNED_URL_EXPIRY_SEC);
+  if (signError || !signed?.signedUrl) {
+    console.error("Signed URL failed:", signError);
+    throw new Error("Could not create download link");
+  }
+  return signed.signedUrl;
 }
 
 /** Reply for general conversation (greetings, "what can you do", etc.) */
@@ -723,7 +892,7 @@ Deno.serve(async (req: Request) => {
       if (messageText.toLowerCase() === "help") {
         await sendWhatsAppReply(
           senderPhone,
-          `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "What's my average daily spend?"\n• "Compare Jan vs Feb"\n• "Top spending categories"\n\n⚡ *Quick commands:*\n• *help* - This message\n• *today* - Today's expenses\n• *total* - This month's summary`,
+          `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "Top spending categories"\n\n📤 *Export:*\n• *export* - Download your expenses (CSV)\n\n⚡ *Quick commands:*\n• *help* - This message\n• *today* - Today's expenses\n• *total* - This month's summary\n• *export* - Download expenses`,
           WHATSAPP_PHONE_NUMBER_ID,
           WHATSAPP_TOKEN
         );
@@ -756,6 +925,166 @@ Deno.serve(async (req: Request) => {
         await sendWhatsAppReply(
           senderPhone,
           "No Groq API key configured. Please add one in Spenny AI Settings or contact support.",
+          WHATSAPP_PHONE_NUMBER_ID,
+          WHATSAPP_TOKEN
+        );
+        return new Response("OK", { status: 200 });
+      }
+
+      // ── Export flow: follow-up questions (period → format) ──
+      let intent: "expense" | "query" | "conversation" | "export" | null = null;
+      const exportState = await getExportState(supabase, senderPhone);
+      if (exportState) {
+        const cancelMsg = messageText.trim().toLowerCase();
+        if (cancelMsg === "cancel" || cancelMsg === "exit" || cancelMsg === "stop") {
+          await clearExportState(supabase, senderPhone);
+          await sendWhatsAppReply(
+            senderPhone,
+            "Export cancelled. Message me anytime to export again.",
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+          return new Response("OK", { status: 200 });
+        }
+
+        if (exportState.step === 1) {
+          const period = parseExportPeriod(messageText);
+          if (period) {
+            await upsertExportState(
+              supabase,
+              senderPhone,
+              userId,
+              2,
+              period.from,
+              period.to,
+              null
+            );
+            await sendWhatsAppReply(
+              senderPhone,
+              "Send as *CSV* or *PDF*?\n\nReply *1* for CSV\nReply *2* for PDF\n\nOr say *cancel* to cancel.",
+              WHATSAPP_PHONE_NUMBER_ID,
+              WHATSAPP_TOKEN
+            );
+          } else {
+            await sendWhatsAppReply(
+              senderPhone,
+              "Please reply with:\n*1* — Last 7 days\n*2* — Last 30 days\n*3* — Last 90 days\n*4* — This month\n\nOr say *cancel* to cancel.",
+              WHATSAPP_PHONE_NUMBER_ID,
+              WHATSAPP_TOKEN
+            );
+          }
+          return new Response("OK", { status: 200 });
+        }
+
+        if (exportState.step === 2) {
+          const formatChoice = parseExportFormat(messageText);
+          if (formatChoice) {
+            const dateFrom = exportState.date_from!;
+            const dateTo = exportState.date_to!;
+            const fromTs = `${dateFrom}T00:00:00.000Z`;
+            const toTs = `${dateTo}T23:59:59.999Z`;
+
+            const { data: expenses, error: fetchErr } = await supabase
+              .from("expenses")
+              .select("date, description, category, amount")
+              .eq("user_id", userId)
+              .gte("date", fromTs)
+              .lte("date", toTs)
+              .order("date", { ascending: true });
+
+            if (fetchErr) {
+              console.error("Export fetch error:", fetchErr);
+              await sendWhatsAppReply(
+                senderPhone,
+                "Something went wrong fetching your expenses. Please try again.",
+                WHATSAPP_PHONE_NUMBER_ID,
+                WHATSAPP_TOKEN
+              );
+              await clearExportState(supabase, senderPhone);
+              return new Response("OK", { status: 200 });
+            }
+
+            if (!expenses || expenses.length === 0) {
+              await sendWhatsAppReply(
+                senderPhone,
+                `No expenses found between ${dateFrom} and ${dateTo}. Try a different period.`,
+                WHATSAPP_PHONE_NUMBER_ID,
+                WHATSAPP_TOKEN
+              );
+              await clearExportState(supabase, senderPhone);
+              return new Response("OK", { status: 200 });
+            }
+
+            if (formatChoice === "csv") {
+              try {
+                const csvContent = generateExportCSV(expenses);
+                const filename = `expenses_${dateFrom}_to_${dateTo}.csv`;
+                const signedUrl = await uploadExportAndGetSignedUrl(
+                  supabase,
+                  senderPhone,
+                  filename,
+                  "text/csv; charset=utf-8",
+                  new TextEncoder().encode(csvContent)
+                );
+                await sendWhatsAppDocument(
+                  senderPhone,
+                  signedUrl,
+                  filename,
+                  `Your expenses (${dateFrom} to ${dateTo}). ${expenses.length} transactions.`,
+                  WHATSAPP_PHONE_NUMBER_ID,
+                  WHATSAPP_TOKEN
+                );
+                await sendWhatsAppReply(
+                  senderPhone,
+                  `✅ Sent your expense report (${expenses.length} transactions). Link expires in 1 hour.`,
+                  WHATSAPP_PHONE_NUMBER_ID,
+                  WHATSAPP_TOKEN
+                );
+              } catch (uploadErr) {
+                console.error("Export upload/send error:", uploadErr);
+                await sendWhatsAppReply(
+                  senderPhone,
+                  "Could not generate the file. Make sure the *whatsapp-exports* storage bucket exists. For PDF export use the Spenny AI app.",
+                  WHATSAPP_PHONE_NUMBER_ID,
+                  WHATSAPP_TOKEN
+                );
+              }
+              await clearExportState(supabase, senderPhone);
+              return new Response("OK", { status: 200 });
+            }
+
+            // PDF: not implemented in edge function; suggest app
+            await sendWhatsAppReply(
+              senderPhone,
+              "PDF export is available in the Spenny AI app (All Transactions → Export). I've sent your CSV for this period.",
+              WHATSAPP_PHONE_NUMBER_ID,
+              WHATSAPP_TOKEN
+            );
+            await clearExportState(supabase, senderPhone);
+            return new Response("OK", { status: 200 });
+          }
+
+          await sendWhatsAppReply(
+            senderPhone,
+            "Reply *1* for CSV or *2* for PDF.\n\nOr say *cancel* to cancel.",
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+          return new Response("OK", { status: 200 });
+        }
+      }
+
+      // ── New export request (no state): start flow ──
+      if (messageText.trim().toLowerCase() === "export") {
+        intent = "export";
+      } else {
+        intent = await classifyIntent(messageText, groqKey);
+      }
+      if (intent === "export") {
+        await upsertExportState(supabase, senderPhone, userId, 1, null, null, null);
+        await sendWhatsAppReply(
+          senderPhone,
+          "📤 *Export your expenses*\n\nWhich period?\nReply with:\n*1* — Last 7 days\n*2* — Last 30 days\n*3* — Last 90 days\n*4* — This month\n\nOr say *cancel* to cancel.",
           WHATSAPP_PHONE_NUMBER_ID,
           WHATSAPP_TOKEN
         );
@@ -855,8 +1184,7 @@ Deno.serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // ── Classify: expense entry, expense question, or general conversation? ──
-      const intent = await classifyIntent(messageText, groqKey);
+      // ── Classify: expense entry, expense question, or general conversation (intent already set above) ──
       console.log(`💡 Intent: ${intent} for message: "${messageText}"`);
 
       if (intent === "conversation") {
