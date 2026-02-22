@@ -11,11 +11,11 @@ import {
   FlatList,
   Platform,
   KeyboardAvoidingView,
-  Share,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system/legacy";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -167,13 +167,30 @@ export default function TransactionsScreen({
   const handleExportCSV = async () => {
     const list = exportList;
     if (list.length === 0) { Toast.show({ type: "error", text1: "No transactions in range." }); return; }
-    const headers = "Date,Description,Category,Amount (₹)\n";
-    const rows = list
-      .map((e) => `${fmt(e.date)},"${(e.description || "").replace(/"/g, '""')}",${e.category},${e.amount.toFixed(2)}`)
-      .join("\n");
-    await Share.share({ message: headers + rows, title: "Expenses CSV" });
-    setIsExportModalOpen(false);
-    Toast.show({ type: "success", text1: "CSV ready to share!" });
+    setExporting(true);
+    try {
+      const { from, to } = getPresetRange(exportPreset, exportCustomFrom, exportCustomTo);
+      const headers = "Date,Description,Category,Amount (INR)\n";
+      const rows = list
+        .map((e) => `${fmt(e.date)},"${(e.description || "").replace(/"/g, '""')}",${e.category},${e.amount.toFixed(2)}`)
+        .join("\n");
+      const csv = "\uFEFF" + headers + rows; // BOM for Excel UTF-8 detection
+      const fileName = `expenses_${format(from, "yyyy-MM-dd")}_to_${format(to, "yyyy-MM-dd")}.csv`;
+      const fileUri = FileSystem.cacheDirectory + fileName;
+      await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, { mimeType: "text/csv", dialogTitle: "Share Expenses CSV", UTI: "public.comma-separated-values-text" });
+      } else {
+        Toast.show({ type: "error", text1: "Sharing not available on this device." });
+      }
+      setIsExportModalOpen(false);
+      Toast.show({ type: "success", text1: "CSV ready!" });
+    } catch (e: any) {
+      Toast.show({ type: "error", text1: "Failed to export CSV", text2: e.message });
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleExportPDF = async () => {
