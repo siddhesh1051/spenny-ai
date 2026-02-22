@@ -17,6 +17,7 @@ import { useTheme } from "../context/ThemeContext";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import Toast from "react-native-toast-message";
+import { TOAST_PROPS } from "../lib/toastConfig";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -238,7 +239,7 @@ export default function AuthScreen() {
           By continuing, you agree to our Terms of Service
         </Text>
       </ScrollView>
-      <Toast />
+      <Toast {...TOAST_PROPS} />
     </KeyboardAvoidingView>
   );
 }

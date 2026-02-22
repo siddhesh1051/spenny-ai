@@ -26,6 +26,7 @@ import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { Mic, Plus, Upload, FileText, Check, X, Pencil, Square } from "lucide-react-native";
 import Toast from "react-native-toast-message";
+import { TOAST_PROPS } from "../lib/toastConfig";
 import Groq from "groq-sdk";
 
 // Buffer polyfill not available in RN - use fetch-based approach for audio
@@ -764,7 +765,7 @@ Keep descriptions short (max 50 chars). Return ONLY valid JSON array.`;
         </KeyboardAvoidingView>
       </Modal>
 
-      <Toast />
+      <Toast {...TOAST_PROPS} />
     </View>
   );
 }

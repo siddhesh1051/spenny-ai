@@ -197,6 +197,7 @@ export default function WhatsAppSection({ user }: Props) {
               </Text>
             )}
             <Button
+              variant="secondary"
               onPress={sendOTP}
               loading={isSubmitting}
               disabled={isSubmitting || phoneNumber.replace(/\D/g, "").length < 10}
@@ -234,7 +235,7 @@ export default function WhatsAppSection({ user }: Props) {
               ))}
             </View>
             {otpError ? <Text style={[styles.otpError, { color: colors.destructive }]}>⚠️ {otpError}</Text> : null}
-            <Button onPress={verifyOTP} loading={isSubmitting} disabled={isSubmitting || otp.length !== 4} style={{ marginTop: 14 }}>
+            <Button variant="secondary" onPress={verifyOTP} loading={isSubmitting} disabled={isSubmitting || otp.length !== 4} style={{ marginTop: 14 }}>
               Verify & Save
             </Button>
             <View style={styles.btnRow}>
