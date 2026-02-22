@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Spenny AI",
+    "slug": "spenny-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "spenny-ai",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090b"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.spennyai.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Spenny AI needs microphone access to record your expense descriptions.",
+        "NSPhotoLibraryUsageDescription": "Spenny AI needs photo library access to upload receipt images.",
+        "NSCameraUsageDescription": "Spenny AI needs camera access to capture receipt photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09090b"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.spennyai.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-av",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Spenny AI needs access to your photos to upload receipt images.",
+          "cameraPermission": "Spenny AI needs camera access to capture receipt photos."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
