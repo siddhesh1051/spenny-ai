@@ -110,18 +110,37 @@ Use these to try the product (voice, text box, or WhatsApp).
 ```bash
 git clone <repo-url>
 cd spenny-ai
-npm install
+```
+
+Install dependencies for each sub-package you want to run:
+
+```bash
+# Web app
+cd web && npm install
+
+# Mobile app (Expo)
+cd ../app && npm install
+
+# MCP server
+cd ../mcp-server && npm install
 ```
 
 ### 2. Environment
 
-Create `.env` in the project root:
+Create `web/.env`:
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 # Optional: default Groq key for all users (otherwise set per user in Settings)
 # VITE_GROQ_API_KEY=your-groq-api-key
+```
+
+Create `app/.env` for the mobile app:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 Use your Supabase project URL and anon key from **Project → Settings → API**.
@@ -134,15 +153,25 @@ Use your Supabase project URL and anon key from **Project → Settings → API**
 
 ### 4. Run the app
 
+**Web:**
+
 ```bash
-npm run dev
+cd web && npm run dev
 ```
 
 Open the URL shown (e.g. `http://localhost:5173`). Sign up, add your Groq API key in **Settings**, then try voice, text, or image/PDF on the home page.
 
+**Mobile (Expo):**
+
+```bash
+cd app && npx expo start
+```
+
 ---
 
 ## Environment Variables
+
+**Web (`web/.env`)**
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -150,7 +179,14 @@ Open the URL shown (e.g. `http://localhost:5173`). Sign up, add your Groq API ke
 | `VITE_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
 | `VITE_GROQ_API_KEY` | No | Default Groq API key (users can override in Settings) |
 
-For E2E tests, copy `.env.e2e.example` to `.env.e2e` and set `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` for full-flow tests.
+**Mobile (`app/.env`)**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
+
+For E2E tests, copy `web/.env.e2e.example` to `web/.env.e2e` and set `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` for full-flow tests.
 
 ---
 
@@ -158,26 +194,62 @@ For E2E tests, copy `.env.e2e.example` to `.env.e2e` and set `E2E_TEST_EMAIL` an
 
 ```
 spenny-ai/
-├── src/
-│   ├── App.tsx                 # Routes, auth, expense logic, Groq calls
-│   ├── lib/supabase.ts         # Supabase client
-│   ├── pages/
-│   │   ├── AuthPage.tsx        # Sign in / Sign up (email, Google)
-│   │   ├── HomePage.tsx        # Voice, text, image, PDF input
-│   │   ├── AllTransactionsPage.tsx  # List, filter, export CSV/PDF
-│   │   ├── AnalyticsPage.tsx   # Charts by category / time
-│   │   ├── SettingsPage.tsx    # Profile, Groq API key
-│   │   ├── ApiKeysPage.tsx     # API key management
-│   │   ├── WhatsAppIntegrationPage.tsx  # Link WhatsApp (OTP)
-│   │   └── ShareTargetPage.tsx # PWA share target handler
-│   └── components/             # UI (sidebar, dialogs, buttons, etc.)
+├── web/                        # React + Vite web app (PWA)
+│   ├── src/
+│   │   ├── App.tsx             # Routes, auth, expense logic, Groq calls
+│   │   ├── main.tsx
+│   │   ├── lib/
+│   │   │   ├── supabase.ts     # Supabase client
+│   │   │   └── utils.ts
+│   │   ├── pages/
+│   │   │   ├── AuthPage.tsx              # Sign in / Sign up (email, Google)
+│   │   │   ├── HomePage.tsx              # Voice, text, image, PDF input
+│   │   │   ├── AllTransactionsPage.tsx   # List, filter, export CSV/PDF
+│   │   │   ├── AnalyticsPage.tsx         # Charts by category / time
+│   │   │   ├── SettingsPage.tsx          # Profile, Groq API key
+│   │   │   ├── ApiKeysPage.tsx           # API key management
+│   │   │   ├── McpServerPage.tsx         # MCP server setup guide
+│   │   │   ├── WhatsAppIntegrationPage.tsx  # Link WhatsApp (OTP)
+│   │   │   └── ShareTargetPage.tsx       # PWA share target handler
+│   │   └── components/
+│   │       ├── sidebar.tsx
+│   │       ├── ApiKeysManagement.tsx
+│   │       ├── PWAInstallPrompt.tsx
+│   │       ├── mode-toggle.tsx
+│   │       ├── theme-provider.tsx
+│   │       └── ui/             # Radix-based UI primitives (shadcn/ui)
+│   ├── e2e/                    # Playwright E2E tests
+│   ├── public/                 # PWA icons, manifest, service worker
+│   ├── .env                    # Web environment variables
+│   ├── vite.config.ts          # Vite + PWA plugin
+│   ├── playwright.config.ts
+│   └── package.json
+├── app/                        # React Native / Expo mobile app
+│   ├── screens/
+│   │   ├── AuthScreen.tsx
+│   │   ├── HomeScreen.tsx
+│   │   ├── TransactionsScreen.tsx
+│   │   ├── AnalyticsScreen.tsx
+│   │   ├── SettingsScreen.tsx
+│   │   └── WhatsAppScreen.tsx
+│   ├── components/
+│   │   ├── AnimatedTabBar.tsx
+│   │   ├── WhatsAppSection.tsx
+│   │   └── ui/                 # Mobile UI primitives
+│   ├── context/
+│   │   └── ThemeContext.tsx
+│   ├── lib/supabase.ts
+│   ├── App.tsx
+│   ├── .env                    # Mobile environment variables
+│   └── package.json
+├── mcp-server/                 # MCP server for AI integrations
+│   ├── index.js
+│   └── package.json
 ├── supabase/
 │   └── functions/
 │       ├── whatsapp-webhook/   # Incoming WhatsApp: expense, query, export
 │       ├── send-whatsapp-otp/  # Send OTP for linking number
 │       └── verify-whatsapp-otp/ # Verify OTP and save number
-├── package.json
-├── vite.config.ts              # Vite + PWA (share target, icons)
 └── README.md
 ```
 
@@ -185,13 +257,19 @@ spenny-ai/
 
 ## Testing
 
+All test commands run from the `web/` directory:
+
+```bash
+cd web
+```
+
 - **Unit / component:** `npm run test` or `npm run test:run` (Vitest + React Testing Library).
 - **E2E (Playwright):**
   - **Run all E2E (Chromium):** `npm run e2e`
   - **With UI:** `npm run e2e:ui`
   - **Headed (see browser):** `npm run e2e:headed`
 
-Auth-page E2E runs without extra config. Full flow (sign in → add expense → transactions) requires test credentials in `.env.e2e` (see `.env.e2e.example`). The app must use the same `VITE_SUPABASE_*` as your dev `.env` so it can reach your Supabase project.
+Auth-page E2E runs without extra config. Full flow (sign in → add expense → transactions) requires test credentials in `web/.env.e2e` (see `web/.env.e2e.example`). The app must use the same `VITE_SUPABASE_*` as your dev `web/.env` so it can reach your Supabase project.
 
 ---
 
