@@ -15,6 +15,7 @@ import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { CheckCircle, Send, RefreshCw } from "lucide-react-native";
 import Toast from "react-native-toast-message";
+import { TOAST_PROPS } from "../lib/toastConfig";
 import type { User } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -366,7 +367,7 @@ export default function WhatsAppScreen() {
           </CardContent>
         </Card>
       )}
-      <Toast />
+      <Toast {...TOAST_PROPS} />
     </ScrollView>
   );
 }

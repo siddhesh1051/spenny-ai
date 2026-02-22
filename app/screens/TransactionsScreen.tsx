@@ -7,15 +7,14 @@ import {
   TextInput,
   Modal,
   StyleSheet,
-  Alert,
   FlatList,
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -37,6 +36,7 @@ import {
   ChevronRight,
 } from "lucide-react-native";
 import Toast from "react-native-toast-message";
+import { TOAST_PROPS } from "../lib/toastConfig";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 
 const CATEGORIES: Record<string, string> = {
@@ -107,6 +107,9 @@ export default function TransactionsScreen({
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
+  // --- Delete confirm ---
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
   // --- Export modal ---
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStep, setExportStep] = useState<1 | 2>(1);
@@ -176,15 +179,14 @@ export default function TransactionsScreen({
         .join("\n");
       const csv = "\uFEFF" + headers + rows; // BOM for Excel UTF-8 detection
       const fileName = `expenses_${format(from, "yyyy-MM-dd")}_to_${format(to, "yyyy-MM-dd")}.csv`;
-      const fileUri = FileSystem.cacheDirectory + fileName;
+      const fileUri = (FileSystem.cacheDirectory ?? FileSystem.documentDirectory) + fileName;
       await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, { mimeType: "text/csv", dialogTitle: "Share Expenses CSV", UTI: "public.comma-separated-values-text" });
-      } else {
-        Toast.show({ type: "error", text1: "Sharing not available on this device." });
-      }
       setIsExportModalOpen(false);
+      await Sharing.shareAsync(fileUri, {
+        mimeType: "text/csv",
+        dialogTitle: "Save CSV",
+        UTI: "public.comma-separated-values-text",
+      });
       Toast.show({ type: "success", text1: "CSV ready!" });
     } catch (e: any) {
       Toast.show({ type: "error", text1: "Failed to export CSV", text2: e.message });
@@ -243,13 +245,12 @@ export default function TransactionsScreen({
         </html>`;
 
       const { uri } = await Print.printToFileAsync({ html, base64: false });
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "Share Expense PDF" });
-      } else {
-        Toast.show({ type: "error", text1: "Sharing not available on this device." });
-      }
       setIsExportModalOpen(false);
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+        dialogTitle: "Save PDF",
+        UTI: "com.adobe.pdf",
+      });
       Toast.show({ type: "success", text1: "PDF ready!" });
     } catch (e: any) {
       Toast.show({ type: "error", text1: "Failed to generate PDF", text2: e.message });
@@ -277,10 +278,7 @@ export default function TransactionsScreen({
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert("Delete Transaction", "This cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteExpense(id) },
-    ]);
+    setDeleteConfirmId(id);
   };
 
   // ------- Expense row -------
@@ -292,31 +290,31 @@ export default function TransactionsScreen({
             {item.description}
           </Text>
           <View style={styles.expenseMeta}>
-            <Badge variant="default" style={{ marginRight: 8 }}>
+            <Badge variant="default" style={{ marginRight: 6 }}>
               {CATEGORIES[item.category] || "🤷"} {item.category}
             </Badge>
             <Text style={[styles.expenseDate, { color: colors.textMuted }]}>{fmt(item.date)}</Text>
           </View>
         </View>
-        <Text style={[styles.expenseAmount, { color: colors.text }]}>₹{item.amount.toFixed(2)}</Text>
-      </View>
-      <View style={[styles.expenseActions, { borderTopColor: colors.border }]}>
-        <TouchableOpacity
-          onPress={() => { setEditingExpense({ ...item }); setIsEditModalOpen(true); }}
-          style={[styles.actionBtn, { borderColor: colors.border }]}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Edit size={13} color={colors.textMuted} />
-          <Text style={[styles.actionBtnText, { color: colors.textMuted }]}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => handleDelete(item.id)}
-          style={[styles.actionBtn, { borderColor: colors.border }]}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Trash2 size={13} color={colors.destructive} />
-          <Text style={[styles.actionBtnText, { color: colors.destructive }]}>Delete</Text>
-        </TouchableOpacity>
+        <View style={styles.cardRight}>
+          <Text style={[styles.expenseAmount, { color: colors.text }]}>₹{item.amount.toFixed(2)}</Text>
+          <View style={styles.iconActions}>
+            <TouchableOpacity
+              onPress={() => { setEditingExpense({ ...item }); setIsEditModalOpen(true); }}
+              style={[styles.iconBtn, { borderColor: colors.border, backgroundColor: colors.input }]}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Edit size={12} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleDelete(item.id)}
+              style={[styles.iconBtn, { borderColor: "rgba(239,68,68,0.25)", backgroundColor: "rgba(239,68,68,0.06)" }]}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Trash2 size={12} color={colors.destructive} />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </Card>
   );
@@ -336,88 +334,105 @@ export default function TransactionsScreen({
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* ---- Filters Bar ---- */}
       <View style={[styles.filtersBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        {/* Search */}
-        <View style={[styles.searchBox, { backgroundColor: colors.input, borderColor: colors.inputBorder }]}>
-          <Search size={15} color={colors.textMuted} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search..."
-            placeholderTextColor={colors.textSecondary}
-            style={[styles.searchInput, { color: colors.text }]}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <X size={13} color={colors.textMuted} />
-            </TouchableOpacity>
-          ) : null}
+
+        {/* Row 1: Search + Export */}
+        <View style={styles.searchRow}>
+          <View style={[styles.searchBox, { backgroundColor: colors.input, borderColor: colors.inputBorder }]}>
+            <Search size={14} color={colors.textMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search..."
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.searchInput, { color: colors.text }]}
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery("")} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <X size={13} color={colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <TouchableOpacity
+            onPress={openExportModal}
+            style={[styles.exportBtn, { backgroundColor: "transparent", borderColor: colors.inputBorder }]}
+          >
+            <Download size={14} color={colors.primary} />
+            <Text style={[styles.exportBtnText, { color: colors.primary }]}>Export</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Filter chips row */}
+        {/* Row 2: Filter chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chipsContent}>
           {/* Category */}
           <TouchableOpacity
             onPress={() => setShowCategoryPicker(true)}
             style={[styles.chip, { backgroundColor: categoryFilter !== "all" ? colors.primaryBg : colors.input, borderColor: categoryFilter !== "all" ? colors.text : colors.inputBorder }]}
           >
-            <Filter size={12} color={categoryFilter !== "all" ? colors.text : colors.textMuted} />
+            <Filter size={11} color={categoryFilter !== "all" ? colors.text : colors.textMuted} />
             <Text style={[styles.chipText, { color: categoryFilter !== "all" ? colors.text : colors.textMuted }]}>
               {categoryFilter === "all" ? "Category" : `${CATEGORIES[categoryFilter]} ${categoryFilter}`}
             </Text>
-            <ChevronDown size={11} color={categoryFilter !== "all" ? colors.text : colors.textMuted} />
+            <ChevronDown size={10} color={categoryFilter !== "all" ? colors.text : colors.textMuted} />
           </TouchableOpacity>
 
-          {/* From date */}
-          <TouchableOpacity
-            onPress={() => setShowDatePicker("from")}
-            style={[styles.chip, { backgroundColor: dateFrom ? colors.primaryBg : colors.input, borderColor: dateFrom ? colors.text : colors.inputBorder }]}
-          >
-            <Calendar size={12} color={dateFrom ? colors.text : colors.textMuted} />
-            <Text style={[styles.chipText, { color: dateFrom ? colors.text : colors.textMuted }]}>
-              {dateFrom ? format(dateFrom, "dd MMM") : "From"}
-            </Text>
-            {dateFrom ? (
-              <TouchableOpacity onPress={() => setDateFrom(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <X size={11} color={colors.text} />
+          {/* Date range — combined pill when both set, separate chips otherwise */}
+          {dateFrom && dateTo ? (
+            <View style={[styles.chip, { backgroundColor: colors.primaryBg, borderColor: colors.text, flexDirection: "row", gap: 5, alignItems: "center" }]}>
+              <Calendar size={11} color={colors.text} />
+              <TouchableOpacity onPress={() => setShowDatePicker("from")} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                <Text style={[styles.chipText, { color: colors.text }]}>{format(dateFrom, "dd MMM")}</Text>
               </TouchableOpacity>
-            ) : null}
-          </TouchableOpacity>
-
-          {/* To date */}
-          <TouchableOpacity
-            onPress={() => setShowDatePicker("to")}
-            style={[styles.chip, { backgroundColor: dateTo ? colors.primaryBg : colors.input, borderColor: dateTo ? colors.text : colors.inputBorder }]}
-          >
-            <Calendar size={12} color={dateTo ? colors.text : colors.textMuted} />
-            <Text style={[styles.chipText, { color: dateTo ? colors.text : colors.textMuted }]}>
-              {dateTo ? format(dateTo, "dd MMM") : "To"}
-            </Text>
-            {dateTo ? (
-              <TouchableOpacity onPress={() => setDateTo(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <X size={11} color={colors.text} />
+              <Text style={[styles.chipText, { color: colors.textMuted }]}>→</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker("to")} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                <Text style={[styles.chipText, { color: colors.text }]}>{format(dateTo, "dd MMM")}</Text>
               </TouchableOpacity>
-            ) : null}
-          </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setDateFrom(null); setDateTo(null); }} hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}>
+                <X size={10} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker("from")}
+                style={[styles.chip, { backgroundColor: dateFrom ? colors.primaryBg : colors.input, borderColor: dateFrom ? colors.text : colors.inputBorder }]}
+              >
+                <Calendar size={11} color={dateFrom ? colors.text : colors.textMuted} />
+                <Text style={[styles.chipText, { color: dateFrom ? colors.text : colors.textMuted }]}>
+                  {dateFrom ? format(dateFrom, "dd MMM") : "From"}
+                </Text>
+                {dateFrom && (
+                  <TouchableOpacity onPress={() => setDateFrom(null)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                    <X size={10} color={colors.text} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker("to")}
+                style={[styles.chip, { backgroundColor: dateTo ? colors.primaryBg : colors.input, borderColor: dateTo ? colors.text : colors.inputBorder }]}
+              >
+                <Calendar size={11} color={dateTo ? colors.text : colors.textMuted} />
+                <Text style={[styles.chipText, { color: dateTo ? colors.text : colors.textMuted }]}>
+                  {dateTo ? format(dateTo, "dd MMM") : "To"}
+                </Text>
+                {dateTo && (
+                  <TouchableOpacity onPress={() => setDateTo(null)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                    <X size={10} color={colors.text} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
 
-          {/* Clear */}
+          {/* Clear all */}
           {hasFilters && (
             <TouchableOpacity
               onPress={clearFilters}
               style={[styles.chip, { backgroundColor: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.3)" }]}
             >
-              <X size={12} color={colors.destructive} />
+              <X size={11} color={colors.destructive} />
               <Text style={[styles.chipText, { color: colors.destructive }]}>Clear</Text>
             </TouchableOpacity>
           )}
-
-          {/* Export */}
-          <TouchableOpacity
-            onPress={openExportModal}
-            style={[styles.chip, { backgroundColor: colors.input, borderColor: colors.inputBorder }]}
-          >
-            <Download size={12} color={colors.textMuted} />
-            <Text style={[styles.chipText, { color: colors.textMuted }]}>Export</Text>
-          </TouchableOpacity>
         </ScrollView>
 
         {/* Summary */}
@@ -723,47 +738,80 @@ export default function TransactionsScreen({
         )}
       </Modal>
 
-      <Toast />
+      {/* ==== DELETE CONFIRM MODAL ==== */}
+      <Modal visible={deleteConfirmId !== null} transparent animationType="slide" onRequestClose={() => setDeleteConfirmId(null)}>
+        <TouchableOpacity style={styles.backdrop} onPress={() => setDeleteConfirmId(null)} activeOpacity={1} />
+        <View style={[styles.confirmSheet, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <View style={[styles.confirmIconWrap, { backgroundColor: "rgba(239,68,68,0.1)" }]}>
+            <Trash2 size={22} color={colors.destructive} />
+          </View>
+          <Text style={[styles.confirmTitle, { color: colors.text }]}>Delete Transaction</Text>
+          <Text style={[styles.confirmDesc, { color: colors.textMuted }]}>
+            This action cannot be undone.
+          </Text>
+          <View style={styles.modalActions}>
+            <Button variant="outline" onPress={() => setDeleteConfirmId(null)} style={{ flex: 1 }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onPress={() => { deleteExpense(deleteConfirmId!); setDeleteConfirmId(null); }}
+              style={{ flex: 1 }}
+            >
+              Delete
+            </Button>
+          </View>
+        </View>
+      </Modal>
+
+      <Toast {...TOAST_PROPS} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  filtersBar: { padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, gap: 10 },
+  filtersBar: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
+
+  // Row 1: search + export
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   searchBox: {
-    flexDirection: "row", alignItems: "center", borderRadius: 10,
-    borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, gap: 8,
+    flex: 1, flexDirection: "row", alignItems: "center", borderRadius: 8,
+    borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6, gap: 7,
   },
-  searchInput: { flex: 1, fontSize: 14 },
+  searchInput: { flex: 1, fontSize: 13, paddingVertical: 0 },
+  exportBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, borderWidth: 1,
+  },
+  exportBtnText: { fontSize: 12, fontWeight: "500" },
+
+  // Row 2: filter chips
   chipsScroll: { flexGrow: 0 },
-  chipsContent: { flexDirection: "row", gap: 7, paddingVertical: 2 },
+  chipsContent: { flexDirection: "row", gap: 6, paddingVertical: 1 },
   chip: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 10,
-    paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 5,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 9,
+    paddingVertical: 5, borderRadius: 20, borderWidth: 1, gap: 4,
   },
-  chipText: { fontSize: 12, fontWeight: "500" },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  summaryText: { fontSize: 12 },
-  summaryAmount: { fontSize: 13, fontWeight: "600" },
+  chipText: { fontSize: 11, fontWeight: "500" },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 2 },
+  summaryText: { fontSize: 11 },
+  summaryAmount: { fontSize: 12, fontWeight: "600" },
 
   // Expense card
-  expenseCard: { padding: 14 },
-  expenseHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  expenseCard: { padding: 12 },
+  expenseHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   expenseInfo: { flex: 1 },
-  expenseDesc: { fontSize: 15, fontWeight: "600", marginBottom: 6 },
-  expenseMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
-  expenseDate: { fontSize: 12 },
-  expenseAmount: { fontSize: 17, fontWeight: "700" },
-  expenseActions: {
-    flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
+  expenseDesc: { fontSize: 14, fontWeight: "600", marginBottom: 5 },
+  expenseMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 5 },
+  expenseDate: { fontSize: 11 },
+  cardRight: { alignItems: "flex-end", gap: 8 },
+  expenseAmount: { fontSize: 15, fontWeight: "700" },
+  iconActions: { flexDirection: "row", gap: 6 },
+  iconBtn: {
+    width: 28, height: 28, borderRadius: 6, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
   },
-  actionBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1,
-  },
-  actionBtnText: { fontSize: 12, fontWeight: "500" },
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   emptyTitle: { fontSize: 18, fontWeight: "600", marginBottom: 8 },
   emptyDesc: { fontSize: 14, textAlign: "center", lineHeight: 22 },
@@ -786,6 +834,20 @@ const styles = StyleSheet.create({
   editLabel: { fontSize: 13, fontWeight: "500", marginBottom: 6 },
   editInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
+
+  // Confirm modal
+  confirmSheet: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, borderWidth: 1, paddingBottom: 44,
+    alignItems: "center",
+  },
+  confirmIconWrap: {
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: "center", justifyContent: "center", marginBottom: 14,
+  },
+  confirmTitle: { fontSize: 17, fontWeight: "700", marginBottom: 6, textAlign: "center" },
+  confirmDesc: { fontSize: 13, textAlign: "center", lineHeight: 19, marginBottom: 4 },
 
   // Export modal
   exportSheet: {

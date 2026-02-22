@@ -39,19 +39,14 @@ interface AnalyticsScreenProps {
   isLoading: boolean;
 }
 
-function StatCard({ title, value }: { title: string; value: string }) {
+function StatRow({ title, value }: { title: string; value: string }) {
   const { colors } = useTheme();
   return (
     <Card style={styles.statCard}>
-      <Text
-        style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4, fontFamily: "Inter_500Medium", letterSpacing: 0.3 }}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
-      <Text style={[styles.statValue, { color: colors.text, fontFamily: "Inter_700Bold" }]} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </Text>
+      <View style={styles.statRow}>
+        <Text style={[styles.statTitle, { color: colors.textMuted, fontFamily: "Inter_500Medium" }]}>{title}</Text>
+        <Text style={[styles.statValue, { color: colors.text, fontFamily: "Inter_700Bold" }]}>{value}</Text>
+      </View>
     </Card>
   );
 }
@@ -109,11 +104,7 @@ export default function AnalyticsScreen({ expenses, isLoading }: AnalyticsScreen
   if (isLoading && expenses.length === 0) {
     return (
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
-        <View style={styles.statsRow}>
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} height={80} style={styles.skeletonStat} />
-          ))}
-        </View>
+        <Skeleton height={110} borderRadius={12} style={{ marginBottom: 16 }} />
         <Skeleton height={200} borderRadius={12} style={{ marginBottom: 16 }} />
         <Skeleton height={200} borderRadius={12} />
       </ScrollView>
@@ -140,11 +131,11 @@ export default function AnalyticsScreen({ expenses, isLoading }: AnalyticsScreen
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* Stat Cards */}
-      <View style={styles.statsRow}>
-        <StatCard title="Total Expenses" value={`₹${analytics.totalExpense.toFixed(0)}`} />
-        <StatCard title="Avg Daily" value={`₹${analytics.avgDaily.toFixed(0)}`} />
-        <StatCard title="Transactions" value={String(analytics.totalTransactions)} />
+      {/* Stat Rows */}
+      <View style={styles.statsGroup}>
+        <StatRow title="Total Expenses" value={`₹${analytics.totalExpense.toFixed(0)}`} />
+        <StatRow title="Avg Daily Spend" value={`₹${analytics.avgDaily.toFixed(0)}`} />
+        <StatRow title="Transactions" value={String(analytics.totalTransactions)} />
       </View>
 
       {/* Top Categories */}
@@ -267,19 +258,17 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, paddingBottom: 32 },
   centered: { alignItems: "center", justifyContent: "center" },
-  statsRow: {
+  statsGroup: { gap: 6, marginBottom: 16 },
+  statCard: { marginBottom: 0, paddingVertical: 12, paddingHorizontal: 16 },
+  statRow: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 16,
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
-  statCard: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    minWidth: 90,
-  },
-  statValue: { fontSize: 18, fontWeight: "700", marginTop: 2 },
-  skeletonStat: { flex: 1, borderRadius: 12 },
+  statTitle: { fontSize: 14 },
+  statValue: { fontSize: 15, fontWeight: "700" },
   card: { marginBottom: 16 },
   categoryRow: { marginBottom: 14 },
   categoryLabelRow: {

@@ -12,6 +12,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import type { Session, User } from "@supabase/supabase-js";
 import Toast from "react-native-toast-message";
+import { TOAST_PROPS } from "./lib/toastConfig";
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
 
 import { supabase } from "./lib/supabase";
@@ -23,6 +24,7 @@ import HomeScreen from "./screens/HomeScreen";
 import AnalyticsScreen from "./screens/AnalyticsScreen";
 import TransactionsScreen from "./screens/TransactionsScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+
 
 interface Expense {
   id: string;
@@ -184,7 +186,7 @@ function MainApp() {
       <>
         <StatusBar barStyle="light-content" backgroundColor="#09090b" />
         <AuthScreen />
-        <Toast />
+        <Toast {...TOAST_PROPS} />
       </>
     );
   }
@@ -267,7 +269,7 @@ function MainApp() {
           {() => <SettingsScreen />}
         </Tab.Screen>
       </Tab.Navigator>
-      <Toast />
+      <Toast {...TOAST_PROPS} />
     </NavigationContainer>
   );
 }
