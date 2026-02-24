@@ -28,6 +28,14 @@ interface WhatsAppMessage {
   audio?: { id: string; mime_type: string };
 }
 
+interface ConversationContext {
+  userId: string;
+  phone: string;
+  recentExpenses?: Array<{ category: string; amount: number; description: string }>;
+  monthlyTotal?: number;
+  topCategory?: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Normalize a phone number to digits only (E.164 without +) */
@@ -190,49 +198,106 @@ async function transcribeAudio(
 
   const data = await res.json();
   console.log("Groq Whisper transcription completed, length:", data?.text?.length ?? 0);
-  // Groq/OpenAI transcription returns { text: "..." } when response_format is json
   const text = data?.text;
   return typeof text === "string" ? text : "";
 }
 
-/** Classify user intent: expense entry, expense question, export, or general conversation */
+/** IMPROVED: Classify user intent with better patterns and context awareness */
 async function classifyIntent(
   text: string,
-  apiKey: string
-): Promise<"expense" | "query" | "conversation" | "export"> {
+  apiKey: string,
+  context?: ConversationContext
+): Promise<"expense" | "query" | "conversation" | "export" | "insights"> {
   const trimmed = text.trim().toLowerCase();
+  
   // Fast path: export / download requests
   const exportPatterns = [
-    /^export\s*(my\s*)?expenses?$/i,
-    /^download\s*(my\s*)?expenses?$/i,
-    /^send\s*(me\s*)?(my\s*)?expenses?$/i,
-    /^export\s*(csv|pdf)$/i,
-    /^download\s*(csv|pdf)$/i,
-    /^get\s*(my\s*)?expenses?\s*(file|csv|pdf)?$/i,
+    /^export(\s+my)?(\s+expenses?)?$/i,
+    /^download(\s+my)?(\s+expenses?)?$/i,
+    /^send(\s+me)?(\s+my)?(\s+expenses?)?$/i,
+    /^(get|give)(\s+me)?(\s+my)?(\s+expenses?)(\s+(file|csv|pdf))?$/i,
+    /(export|download|send)\s+(csv|pdf|expenses?|data)/i,
+    /save\s+(my\s+)?expenses?/i,
   ];
   if (exportPatterns.some((p) => p.test(trimmed))) {
     return "export";
   }
-  // Fast path: obvious greetings or capability questions → conversation
+  
+  // Fast path: greetings and simple conversation
   const conversationPatterns = [
     /^(hi|hello|hey|hiya|hey there|hola|namaste|good morning|good afternoon|good evening)[\s!?.,]*$/i,
-    /^(what can you do|what do you do|who are you|how do you work|what are you|tell me about yourself)[\s?]*$/i,
-    /^(thanks?|thank you|thx|ok|okay|cool|great|bye|goodbye)[\s!?.,]*$/i,
+    /^(thanks?|thank you|thx|ty|appreciated?)[\s!?.,]*$/i,
+    /^(ok|okay|cool|great|nice|awesome|perfect|alright)[\s!?.,]*$/i,
+    /^(bye|goodbye|see you|cya|later)[\s!?.,]*$/i,
   ];
   if (conversationPatterns.some((p) => p.test(trimmed))) {
     return "conversation";
   }
 
-  const prompt = `You are an intent classifier for an expense tracking app. Classify the following user message into exactly one of four categories:
+  // Fast path: obvious expense entries
+  const expensePatterns = [
+    /spent\s+\d+/i,
+    /paid\s+\d+/i,
+    /bought\s+.+\s+for\s+\d+/i,
+    /\d+\s+(on|for)\s+\w+/i,
+    /^\d+\s+(rupees?|rs|inr|₹)/i,
+  ];
+  if (expensePatterns.some((p) => p.test(trimmed))) {
+    return "expense";
+  }
 
-1. "expense" — the user is logging/adding a new expense (e.g. "spent 50 on coffee", "lunch 200", "paid rent 15000")
-2. "query" — the user is asking a question about their expenses, requesting a summary or information (e.g. "how much did I spend last month", "show my food expenses", "top categories")
-3. "export" — the user wants to download/export/send their expense data as a file (e.g. "export my expenses", "download expenses", "send me my expenses csv", "I want to export")
-4. "conversation" — greetings, small talk, thanks, goodbye, or anything that is NOT logging an expense, NOT a question about expense data, and NOT a request to export/download (e.g. "hi", "what can you do", "thanks", "bye")
+  // Fast path: obvious queries
+  const queryPatterns = [
+    /(how much|total|summary|show|list|what).*(spent|spend|expenses?|cost)/i,
+    /(where|what).*(money|went|spending)/i,
+    /(breakdown|analysis|report).*(month|week|day|year)/i,
+  ];
+  if (queryPatterns.some((p) => p.test(trimmed))) {
+    return "query";
+  }
 
-Message: "${text}"
+  // Fast path: insights and suggestions
+  const insightPatterns = [
+    /(suggest|recommendation|advice|tip|help me|should i)/i,
+    /(save|reduce|cut|lower).*(spending|expenses?|cost)/i,
+    /(budget|plan|goal)/i,
+    /(compare|vs|versus)/i,
+  ];
+  if (insightPatterns.some((p) => p.test(trimmed))) {
+    return "insights";
+  }
 
-Reply with ONLY one word: expense OR query OR export OR conversation`;
+  // Use LLM for ambiguous cases
+  const contextInfo = context ? `
+Recent user activity:
+- Total expenses this month: ${context.monthlyTotal ? formatINR(context.monthlyTotal) : 'unknown'}
+- Top spending category: ${context.topCategory || 'unknown'}
+- Recent expenses: ${context.recentExpenses?.length || 0} transactions
+` : '';
+
+  const prompt = `You are an intent classifier for an expense tracking chatbot. Classify the user's message into EXACTLY ONE category.
+
+${contextInfo}
+
+Categories:
+1. "expense" — User is logging a new expense
+   Examples: "spent 50 on coffee", "lunch 200", "paid rent 15000", "bought groceries for 500"
+   
+2. "query" — User wants information about their expenses
+   Examples: "how much did I spend last month", "show food expenses", "total spending", "what did I spend on entertainment"
+   
+3. "export" — User wants to download/export their data
+   Examples: "export my expenses", "download csv", "send me my data", "save expenses"
+   
+4. "insights" — User wants suggestions, analysis, or advice
+   Examples: "how can I save money", "suggest ways to reduce spending", "should I budget more for food", "compare this month vs last month"
+   
+5. "conversation" — Greetings, questions about the bot, thanks, or general chat
+   Examples: "what can you do", "how does this work", "who made you", "tell me about yourself"
+
+User message: "${text}"
+
+Reply with ONLY ONE WORD: expense OR query OR export OR insights OR conversation`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -241,10 +306,10 @@ Reply with ONLY one word: expense OR query OR export OR conversation`;
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
-      max_tokens: 15,
+      max_tokens: 10,
     }),
   });
 
@@ -261,6 +326,7 @@ Reply with ONLY one word: expense OR query OR export OR conversation`;
   if (answer.includes("conversation")) return "conversation";
   if (answer.includes("export")) return "export";
   if (answer.includes("query")) return "query";
+  if (answer.includes("insights")) return "insights";
   return "expense";
 }
 
@@ -326,55 +392,124 @@ function clearExportState(supabase: any, phone: string): Promise<void> {
   return supabase.from("whatsapp_export_state").delete().eq("phone", phone).then(() => {});
 }
 
-/** Parse period choice: "1"|"2"|"3"|"4" or "one"/"last 7" etc. Returns { from, to } in YYYY-MM-DD or null. */
+/** IMPROVED: Parse period choice with better natural language understanding */
 function parseExportPeriod(text: string): { from: string; to: string } | null {
   const t = text.trim().toLowerCase().replace(/\s+/g, " ");
   const now = new Date();
   const today = now.toISOString().split("T")[0];
 
-  if (/^1$|^one$|^last\s*7|^7\s*days?/.test(t)) {
+  // Numbered options
+  if (/^1$|^one$|^option\s*1/.test(t)) {
     const from = new Date(now);
     from.setDate(from.getDate() - 6);
     return { from: from.toISOString().split("T")[0], to: today };
   }
-  if (/^2$|^two$|^last\s*30|^30\s*days?/.test(t)) {
+  if (/^2$|^two$|^option\s*2/.test(t)) {
     const from = new Date(now);
     from.setDate(from.getDate() - 29);
     return { from: from.toISOString().split("T")[0], to: today };
   }
-  if (/^3$|^three$|^last\s*90|^90\s*days?/.test(t)) {
+  if (/^3$|^three$|^option\s*3/.test(t)) {
     const from = new Date(now);
     from.setDate(from.getDate() - 89);
     return { from: from.toISOString().split("T")[0], to: today };
   }
-  if (/^4$|^four$|^this\s*month|^current\s*month/.test(t)) {
+  if (/^4$|^four$|^option\s*4/.test(t)) {
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return { from: from.toISOString().split("T")[0], to: to.toISOString().split("T")[0] };
   }
+
+  // Natural language
+  if (/last\s*7|7\s*days?|past\s*week|this\s*week/.test(t)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 6);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/last\s*30|30\s*days?|past\s*month/.test(t)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 29);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/last\s*90|90\s*days?|past\s*(3|three)\s*months?/.test(t)) {
+    const from = new Date(now);
+    from.setDate(from.getDate() - 89);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/this\s*month|current\s*month/.test(t)) {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: from.toISOString().split("T")[0], to: to.toISOString().split("T")[0] };
+  }
+  if (/last\s*month|previous\s*month/.test(t)) {
+    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const to = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { from: from.toISOString().split("T")[0], to: to.toISOString().split("T")[0] };
+  }
+  if (/this\s*year|current\s*year/.test(t)) {
+    const from = new Date(now.getFullYear(), 0, 1);
+    return { from: from.toISOString().split("T")[0], to: today };
+  }
+  if (/^today$|^just\s*today/.test(t)) {
+    return { from: today, to: today };
+  }
+  if (/^yesterday$/.test(t)) {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const day = yesterday.toISOString().split("T")[0];
+    return { from: day, to: day };
+  }
+
   return null;
 }
 
-/** Parse any date range from user text (Groq): "first 2 weeks of last month", "21/01/2026 to 31-01-2026", "1st jan to today", etc. */
+/** IMPROVED: Parse date ranges with better Groq prompt */
 async function parseDateRangeWithGroq(
   text: string,
   apiKey: string
 ): Promise<{ from: string; to: string } | null> {
   const today = new Date().toISOString().split("T")[0];
-  const prompt = `You parse a date range from the user's message into exactly two dates.
+  const now = new Date();
+  const currentMonth = now.toLocaleString('default', { month: 'long' });
+  const currentYear = now.getFullYear();
+  
+  const prompt = `You are a date range parser. Extract start and end dates from the user's message.
 
 Today's date: ${today}
+Current month: ${currentMonth} ${currentYear}
 
 Rules:
-- Accept any format: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, "1st Jan 2026", "Jan 1 to today", "first 2 weeks of last month", "21/01/2026 to 31-01-2026", "jan 1 to today", "last jan" (January just passed or last year's January), etc.
-- If only one date given, use it for both start and end, or infer end as today if it sounds like "from X onwards".
-- "today" = ${today}. "yesterday" = yesterday's date.
-- Return JSON only: { "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }. start_date must be <= end_date.
-- If the message cannot be parsed as a date range, return: { "start_date": null, "end_date": null }
+1. Accept ANY date format:
+   - DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
+   - "1st Jan 2026", "Jan 1", "January 15th"
+   - "21/01/2026 to 31-01-2026"
+   - "from Jan 1 to today"
+   - "first 2 weeks of last month"
+   - "last January" (January ${currentYear - 1} if we're past January, else January ${currentYear})
+   - "this quarter", "last quarter"
+   - Relative: "yesterday", "last week", "2 weeks ago"
+
+2. Special periods:
+   - "last month" = full previous calendar month
+   - "this month" = ${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}-01 to today
+   - "last week" = 7-14 days ago
+   - "this week" = last 7 days to today
+   - "last year" = ${currentYear - 1}-01-01 to ${currentYear - 1}-12-31
+
+3. If only ONE date:
+   - If it sounds like "from X onwards" → start_date = X, end_date = today
+   - If it's just a date → start_date = end_date = that date
+
+4. start_date must be <= end_date
+5. If cannot parse, return { "start_date": null, "end_date": null }
 
 User message: "${text}"
 
-Return ONLY the JSON object.`;
+Return ONLY valid JSON:
+{
+  "start_date": "YYYY-MM-DD" or null,
+  "end_date": "YYYY-MM-DD" or null
+}`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -383,10 +518,10 @@ Return ONLY the JSON object.`;
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
-      max_tokens: 80,
+      max_tokens: 100,
     }),
   });
 
@@ -413,27 +548,55 @@ Return ONLY the JSON object.`;
   return null;
 }
 
-/** Extract period and format from an export message (Groq): "export last 30 days csv", "send expenses 1st jan to today as pdf", etc. */
+/** IMPROVED: Extract period and format with better parsing */
 async function parseExportIntentFromMessage(
   text: string,
   apiKey: string
 ): Promise<{ start_date: string | null; end_date: string | null; format: "csv" | "pdf" | null }> {
   const today = new Date().toISOString().split("T")[0];
-  const prompt = `The user wants to export/download their expenses. Extract date range and format from their message.
+  const now = new Date();
+  const currentMonth = now.toLocaleString('default', { month: 'long' });
+  const currentYear = now.getFullYear();
+  
+  const prompt = `Extract date range and export format from the user's export request.
 
-Today's date: ${today}
+Today: ${today}
+Current: ${currentMonth} ${currentYear}
 
-Extract:
-1. start_date: "YYYY-MM-DD" or null (if they said a period like "last 30 days", "from 1st jan", "21/01/2026 to 31-01-2026", "first 2 weeks of last month", "jan 1 to today", etc.)
-2. end_date: "YYYY-MM-DD" or null
-3. format: "csv" or "pdf" or null (if they said "csv", "as csv", "in pdf", "pdf", "send csv", etc.)
+Extract THREE things:
+1. start_date: "YYYY-MM-DD" or null
+2. end_date: "YYYY-MM-DD" or null  
+3. format: "csv" or "pdf" or null
 
-Accept any date format: DD/MM/YYYY, DD-MM-YYYY, "1st Jan", "Jan 1 to today", "last month", "first 2 weeks of last month". start_date must be <= end_date.
-If only one date or "from X" then end_date can be today. If they don't mention dates, return null for both. If they don't mention format, return null for format.
+Date format examples:
+- "export last 30 days" → last 30 days
+- "send expenses 1st jan to today" → ${currentYear}-01-01 to today
+- "download this month as pdf" → first day of this month to today
+- "export last month" → first to last day of previous month
+- "21/01/2026 to 31-01-2026" → parse both dates
+- "first 2 weeks of last month" → calculate
+- "this quarter" → current quarter dates
+- "expenses from january" → ${currentYear}-01-01 to today
+
+Format detection:
+- "csv", "as csv", "in csv format", "send csv" → "csv"
+- "pdf", "as pdf", "pdf format", "send pdf" → "pdf"
+- No mention → null
+
+Rules:
+- start_date <= end_date
+- Accept any date format
+- If no dates mentioned → both null
+- If no format mentioned → null
 
 User message: "${text}"
 
-Return ONLY a JSON object: { "start_date": "YYYY-MM-DD" or null, "end_date": "YYYY-MM-DD" or null, "format": "csv" or "pdf" or null }`;
+Return ONLY valid JSON:
+{
+  "start_date": "YYYY-MM-DD" or null,
+  "end_date": "YYYY-MM-DD" or null,
+  "format": "csv" or "pdf" or null
+}`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -442,10 +605,10 @@ Return ONLY a JSON object: { "start_date": "YYYY-MM-DD" or null, "end_date": "YY
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
-      max_tokens: 100,
+      max_tokens: 120,
     }),
   });
 
@@ -475,8 +638,8 @@ Return ONLY a JSON object: { "start_date": "YYYY-MM-DD" or null, "end_date": "YY
 /** Parse format choice: "1"/"2", "one"/"two", "csv"/"pdf", or phrases like "send csv", "I want pdf". Returns 'csv' | 'pdf' or null. */
 function parseExportFormat(text: string): "csv" | "pdf" | null {
   const t = text.trim().toLowerCase();
-  if (/^1$|^one$|^csv$/.test(t)) return "csv";
-  if (/^2$|^two$|^pdf$/.test(t)) return "pdf";
+  if (/^1$|^one$|^csv$|send csv|want csv|choose csv|select csv/.test(t)) return "csv";
+  if (/^2$|^two$|^pdf$|send pdf|want pdf|choose pdf|select pdf/.test(t)) return "pdf";
   if (t.includes("pdf")) return "pdf";
   if (t.includes("csv")) return "csv";
   return null;
@@ -503,8 +666,12 @@ function generateExportPDF(
   doc.text("Expenses Export", 14, 15);
   doc.setFontSize(10);
   doc.text(`Date range: ${dateFrom} to ${dateTo}`, 14, 22);
+  
+  const total = expenses.reduce((sum, e) => sum + e.amount, 0);
+  doc.text(`Total: ${formatINR(total)} | ${expenses.length} transactions`, 14, 27);
+  
   autoTable(doc, {
-    startY: 28,
+    startY: 32,
     head: [["Date", "Description", "Category", "Amount (₹)"]],
     body: expenses.map((e) => [
       new Date(e.date).toISOString().split("T")[0],
@@ -545,7 +712,7 @@ async function uploadExportAndGetSignedUrl(
   return signed.signedUrl;
 }
 
-/** Fetch expenses, generate CSV, upload, send document. Used when we have both period and format. */
+/** Fetch expenses, generate CSV/PDF, upload, send document. */
 async function doExportAndSend(
   supabase: any,
   senderPhone: string,
@@ -626,9 +793,11 @@ async function doExportAndSend(
         token
       );
     }
+    
+    const total = expenses.reduce((sum, e) => sum + e.amount, 0);
     await sendWhatsAppReply(
       senderPhone,
-      `✅ Sent your expense report (${expenses.length} transactions). Link expires in 1 hour.`,
+      `✅ Sent your expense report!\n\n📊 ${expenses.length} transactions\n💰 Total: ${formatINR(total)}\n⏰ Link expires in 1 hour.`,
       phoneNumberId,
       token
     );
@@ -636,43 +805,61 @@ async function doExportAndSend(
     console.error("Export upload/send error:", uploadErr);
     await sendWhatsAppReply(
       senderPhone,
-      "Could not generate or send the file. The export bucket will be created automatically on first use — please try again.",
+      "Could not generate or send the file. Please try again.",
       phoneNumberId,
       token
     );
   }
 }
 
-/** Reply for general conversation (greetings, "what can you do", etc.) */
-function getConversationReply(messageText: string): string {
+/** IMPROVED: Better conversation replies with context */
+function getConversationReply(messageText: string, context?: ConversationContext): string {
   const t = messageText.trim().toLowerCase();
+  
   // Greetings
   if (/^(hi|hello|hey|hiya|hola|namaste|good morning|good afternoon|good evening)/i.test(t)) {
-    return "Hi! 👋 I'm Spenny AI — your expense tracker on WhatsApp.\n\nYou can *log expenses* (e.g. \"spent 50 on coffee\") or *ask about your spending* (e.g. \"how much last month?\").\n\nSay *help* for all commands.";
+    const contextGreeting = context?.monthlyTotal 
+      ? `\n\n📊 Quick update: You've spent ${formatINR(context.monthlyTotal)} this month${context.topCategory ? ` (mostly on ${context.topCategory})` : ''}.`
+      : '';
+    return `Hi! 👋 I'm Spenny AI — your smart expense tracker on WhatsApp.${contextGreeting}\n\n*What I can do:*\n📝 Log expenses (text or voice)\n❓ Answer expense questions\n📤 Export your data\n💡 Give spending insights\n\nTry: "Spent 50 on coffee" or "How much last month?"`;
   }
+  
   // What can you do / who are you
-  if (/what can you do|what do you do|who are you|how do you work|what are you|tell me about yourself/i.test(t)) {
-    return `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "What's my average daily spend?"\n• "Top spending categories"\n\n⚡ *Quick:* *help* • *today* • *total*`;
+  if (/what can you do|what do you do|who are you|how do you work|what are you|tell me about yourself|help me|capabilities|features/i.test(t)) {
+    return `*Spenny AI - Your Expense Assistant* 🤖\n\n✨ *What I can do:*\n\n📝 *Log Expenses*\n• Text: "Spent 50 on coffee"\n• Multiple: "Lunch 150, auto 30"\n• Voice: 🎙️ Just send a voice note!\n\n❓ *Answer Questions*\n• "How much did I spend last month?"\n• "Show my food expenses"\n• "What's my biggest expense category?"\n• "Average daily spending"\n\n📤 *Export Data*\n• "Export last month as CSV"\n• "Download this year's expenses"\n• PDF or CSV format\n\n💡 *Get Insights*\n• "Suggest ways to save"\n• "Compare this month vs last"\n• Spending pattern analysis\n\n⚡ *Quick Commands:*\nType *help* • *today* • *total* • *export*`;
   }
-  // Thanks / bye
-  if (/^(thanks?|thank you|thx|ok|okay|cool|great)/i.test(t)) {
-    return "You're welcome! 😊 Message me anytime to log expenses or ask about your spending.";
+  
+  // Thanks / acknowledgment
+  if (/^(thanks?|thank you|thx|ty|appreciated?)/i.test(t)) {
+    return "You're welcome! 😊 I'm here whenever you need to track expenses or get spending insights.";
   }
-  if (/^(bye|goodbye)/i.test(t)) {
-    return "Bye! 👋 Log your expenses anytime.";
+  
+  // Bye
+  if (/^(bye|goodbye|see you|cya|later)/i.test(t)) {
+    return "Goodbye! 👋 Keep tracking those expenses. Message anytime!";
   }
-  // Fallback: short helpful reply
-  return "I'm Spenny AI — I help you track expenses on WhatsApp. You can log expenses (e.g. \"spent 100 on lunch\") or ask about your spending (e.g. \"how much last month?\"). Say *help* for more.";
+  
+  // OK/Cool acknowledgment
+  if (/^(ok|okay|cool|great|nice|awesome|perfect|alright)[\s!?.,]*$/i.test(t)) {
+    return "👍 Anything else I can help with? Log expenses, ask questions, or type *help*.";
+  }
+  
+  // Fallback
+  return "I'm Spenny AI, your expense tracking assistant! 💰\n\nI can help you:\n• Log expenses (text or voice)\n• Answer spending questions\n• Export your data\n• Get insights\n\nTry: \"Spent 100 on lunch\" or type *help* for all features.";
 }
 
-/** Step 1: Extract Supabase query filters from a natural language question */
+/** IMPROVED: Extract query filters with better SQL building */
 interface QueryFilters {
-  start_date: string | null; // ISO date string
-  end_date: string | null;   // ISO date string
-  category: string | null;   // one of: food, travel, groceries, entertainment, utilities, rent, other
+  start_date: string | null;
+  end_date: string | null;
+  category: string | null;
+  min_amount: number | null;
+  max_amount: number | null;
   sort_by: "date" | "amount";
   sort_order: "asc" | "desc";
   limit: number;
+  group_by: "category" | "day" | "week" | "month" | null;
+  search_description: string | null;
 }
 
 async function extractQueryFilters(
@@ -680,38 +867,88 @@ async function extractQueryFilters(
   apiKey: string
 ): Promise<QueryFilters> {
   const today = new Date().toISOString().split("T")[0];
-  const prompt = `You extract database query filters from a natural language question about expenses.
+  const now = new Date();
+  const currentMonth = now.toLocaleString('default', { month: 'long' });
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = lastMonthDate.toLocaleString('default', { month: 'long' });
+  
+  const prompt = `You are a SQL query builder for an expense tracking database. Extract filter parameters from the user's natural language question.
 
-Today's date: ${today}
+Today: ${today}
+Current month: ${currentMonth}
+Last month: ${lastMonth}
 
-Given the user's question, return a JSON object with these fields:
+Available categories: food, travel, groceries, entertainment, utilities, rent, other
+
+User question: "${question}"
+
+Extract these fields and return ONLY valid JSON:
+
 {
   "start_date": "YYYY-MM-DD" or null,
   "end_date": "YYYY-MM-DD" or null,
   "category": "food" | "travel" | "groceries" | "entertainment" | "utilities" | "rent" | "other" | null,
+  "min_amount": number or null,
+  "max_amount": number or null,
   "sort_by": "date" | "amount",
   "sort_order": "asc" | "desc",
-  "limit": number (default 100, max 500)
+  "limit": number (1-500),
+  "group_by": "category" | "day" | "week" | "month" | null,
+  "search_description": string or null
 }
 
 Rules:
-- "last month" = first day to last day of previous month
-- "this month" = first day of current month to today
-- "this week" = last 7 days
-- "last week" = 7-14 days ago
-- "january", "feb" etc = that month of the current year (or last year if the month is in the future)
-- "yesterday" = yesterday's date for both start and end
-- "today" = today's date for both start and end
-- If no time range mentioned, set both dates to null (we'll fetch all data)
-- If user asks about a specific category like "food expenses", set category
-- If user asks "biggest" or "highest", sort_by=amount, sort_order=desc
-- If user asks "smallest" or "lowest", sort_by=amount, sort_order=asc
-- If user asks "recent" or "latest", sort_by=date, sort_order=desc
-- Default: sort_by=date, sort_order=desc, limit=100
+1. Date ranges:
+   - "last month" = full previous calendar month (${lastMonth})
+   - "this month" = first day of current month to today
+   - "this week" = last 7 days
+   - "last week" = 7-14 days ago
+   - "yesterday" = yesterday only
+   - "today" = today only
+   - "january", "feb" etc = that specific month
+   - No time range = both null (fetch all)
 
-User's question: "${question}"
+2. Amount filters:
+   - "over 1000", "more than 500" → min_amount
+   - "under 100", "less than 50" → max_amount
+   - "between 100 and 500" → both
 
-Return ONLY the JSON object, no other text.`;
+3. Category:
+   - Mentioned category → set it
+   - "food expenses", "travel costs" → category
+   - Not mentioned → null
+
+4. Sorting:
+   - "biggest", "highest", "most expensive", "top" → sort_by=amount, sort_order=desc
+   - "smallest", "lowest", "cheapest" → sort_by=amount, sort_order=asc
+   - "recent", "latest", "newest" → sort_by=date, sort_order=desc
+   - "oldest", "first" → sort_by=date, sort_order=asc
+   - Default → sort_by=date, sort_order=desc
+
+5. Grouping:
+   - "by category", "breakdown by category" → group_by=category
+   - "daily", "per day" → group_by=day
+   - "weekly", "per week" → group_by=week
+   - "monthly", "per month" → group_by=month
+   - Not mentioned → null
+
+6. Search:
+   - "coffee expenses", "spent on uber" → search_description
+   - Extract key terms from description
+
+7. Limit:
+   - "top 5", "last 10" → that number
+   - "all" → 500
+   - Default → 100
+
+Examples:
+- "show food expenses last month" → last month dates, category=food
+- "biggest expenses this week" → last 7 days, sort_by=amount, sort_order=desc
+- "how much on coffee" → search_description="coffee"
+- "spending by category this month" → this month dates, group_by=category
+- "expenses over 1000" → min_amount=1000
+
+Return ONLY the JSON object.`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -720,21 +957,26 @@ Return ONLY the JSON object, no other text.`;
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
+      max_tokens: 300,
     }),
   });
 
   if (!res.ok) {
-    console.warn("Query filter extraction failed:", res.status, ", using defaults");
+    console.warn("Query filter extraction failed:", res.status);
     return {
       start_date: null,
       end_date: null,
       category: null,
+      min_amount: null,
+      max_amount: null,
       sort_by: "date",
       sort_order: "desc",
       limit: 100,
+      group_by: null,
+      search_description: null,
     };
   }
 
@@ -750,34 +992,41 @@ Return ONLY the JSON object, no other text.`;
       start_date: parsed.start_date || null,
       end_date: parsed.end_date || null,
       category: parsed.category || null,
+      min_amount: parsed.min_amount || null,
+      max_amount: parsed.max_amount || null,
       sort_by: parsed.sort_by === "amount" ? "amount" : "date",
       sort_order: parsed.sort_order === "asc" ? "asc" : "desc",
       limit: Math.min(Math.max(parsed.limit || 100, 1), 500),
+      group_by: ["category", "day", "week", "month"].includes(parsed.group_by) ? parsed.group_by : null,
+      search_description: parsed.search_description || null,
     };
   } catch {
     return {
       start_date: null,
       end_date: null,
       category: null,
+      min_amount: null,
+      max_amount: null,
       sort_by: "date",
       sort_order: "desc",
       limit: 100,
+      group_by: null,
+      search_description: null,
     };
   }
 }
 
-/** Step 2 & 3: Query Supabase with filters, then answer using Groq */
+/** IMPROVED: Answer expense queries with better SQL and response formatting */
 async function answerExpenseQuery(
   question: string,
   userId: string,
   apiKey: string,
   supabase: any
 ): Promise<string> {
-  // Step 1: Extract query filters from the question
   const filters = await extractQueryFilters(question, apiKey);
   console.log("🔍 Query filters:", JSON.stringify(filters));
 
-  // Step 2: Build targeted Supabase query
+  // Build Supabase query
   let query = supabase
     .from("expenses")
     .select("amount, category, description, date")
@@ -792,6 +1041,15 @@ async function answerExpenseQuery(
   if (filters.category) {
     query = query.eq("category", filters.category);
   }
+  if (filters.min_amount) {
+    query = query.gte("amount", filters.min_amount);
+  }
+  if (filters.max_amount) {
+    query = query.lte("amount", filters.max_amount);
+  }
+  if (filters.search_description) {
+    query = query.ilike("description", `%${filters.search_description}%`);
+  }
 
   query = query
     .order(filters.sort_by, { ascending: filters.sort_order === "asc" })
@@ -800,56 +1058,109 @@ async function answerExpenseQuery(
   const { data: expenses, error } = await query;
 
   if (error) {
-    console.error("Supabase expenses fetch error:", error.message, "userId:", userId);
-    throw new Error(`Failed to fetch expenses: ${error.message}`);
+    console.error("Expense query error:", error);
+    throw new Error(`Query failed: ${error.message}`);
   }
-  console.log("Fetched", expenses?.length ?? 0, "expenses for query");
 
   const today = new Date().toISOString().split("T")[0];
 
   if (!expenses || expenses.length === 0) {
-    const dateInfo = filters.start_date
-      ? ` between ${filters.start_date} and ${filters.end_date || today}`
-      : "";
-    const catInfo = filters.category ? ` in ${filters.category}` : "";
-    return `No expenses found${catInfo}${dateInfo}. Start logging expenses by sending messages like "Spent 50 on coffee"!`;
+    const parts = [];
+    if (filters.category) parts.push(`in ${filters.category}`);
+    if (filters.start_date) parts.push(`from ${filters.start_date}`);
+    if (filters.end_date) parts.push(`to ${filters.end_date}`);
+    if (filters.min_amount) parts.push(`over ${formatINR(filters.min_amount)}`);
+    if (filters.max_amount) parts.push(`under ${formatINR(filters.max_amount)}`);
+    if (filters.search_description) parts.push(`matching "${filters.search_description}"`);
+    
+    const context = parts.length > 0 ? ` ${parts.join(", ")}` : "";
+    return `No expenses found${context}.\n\nStart logging by sending: "Spent 50 on coffee"`;
   }
 
-  // Step 3: Build compact data for Groq to summarize
-  const expenseLines = expenses.map(
-    (e: any) =>
-      `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
-  );
+  // Group if requested
+  let groupedData: any = null;
+  if (filters.group_by === "category") {
+    const byCategory: Record<string, { total: number; count: number }> = {};
+    expenses.forEach((e: any) => {
+      if (!byCategory[e.category]) {
+        byCategory[e.category] = { total: 0, count: 0 };
+      }
+      byCategory[e.category].total += e.amount;
+      byCategory[e.category].count += 1;
+    });
+    groupedData = { type: "category", data: byCategory };
+  } else if (filters.group_by === "day" || filters.group_by === "week" || filters.group_by === "month") {
+    const byPeriod: Record<string, { total: number; count: number }> = {};
+    expenses.forEach((e: any) => {
+      const date = new Date(e.date);
+      let key: string;
+      if (filters.group_by === "day") {
+        key = date.toISOString().split("T")[0];
+      } else if (filters.group_by === "week") {
+        const weekStart = new Date(date);
+        weekStart.setDate(date.getDate() - date.getDay());
+        key = weekStart.toISOString().split("T")[0];
+      } else {
+        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      }
+      if (!byPeriod[key]) {
+        byPeriod[key] = { total: 0, count: 0 };
+      }
+      byPeriod[key].total += e.amount;
+      byPeriod[key].count += 1;
+    });
+    groupedData = { type: filters.group_by, data: byPeriod };
+  }
 
   const totalAmount = expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
+
+  // Build data for Groq
+  const expenseLines = expenses.slice(0, 50).map((e: any) =>
+    `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+  );
 
   const filterDesc = [];
   if (filters.start_date) filterDesc.push(`from ${filters.start_date}`);
   if (filters.end_date) filterDesc.push(`to ${filters.end_date}`);
   if (filters.category) filterDesc.push(`category: ${filters.category}`);
+  if (filters.min_amount) filterDesc.push(`min: ₹${filters.min_amount}`);
+  if (filters.max_amount) filterDesc.push(`max: ₹${filters.max_amount}`);
+  if (filters.search_description) filterDesc.push(`search: "${filters.search_description}"`);
 
-  const prompt = `You are Spenny AI, a friendly expense tracking assistant on WhatsApp.
+  const groupingInfo = groupedData 
+    ? `\n\nGrouped by ${groupedData.type}:\n${Object.entries(groupedData.data)
+        .sort((a: any, b: any) => b[1].total - a[1].total)
+        .map(([key, val]: [string, any]) => `${key}: ₹${val.total} (${val.count} items)`)
+        .join("\n")}`
+    : "";
 
-Today's date: ${today}
+  const prompt = `You are Spenny AI, a friendly and helpful expense tracking assistant on WhatsApp.
+
+Today: ${today}
 Currency: Indian Rupees (₹ / INR)
 
-Query applied: ${filterDesc.length > 0 ? filterDesc.join(", ") : "all expenses"}
-Results: ${expenses.length} transactions, total ₹${totalAmount}
+Query: ${filterDesc.length > 0 ? filterDesc.join(", ") : "all expenses"}
+Results: ${expenses.length} transactions, total ₹${totalAmount}${groupingInfo}
 
-Expense data (date | category | description | amount):
+Sample data (date | category | description | amount):
 ${expenseLines.join("\n")}
+${expenses.length > 50 ? `\n...and ${expenses.length - 50} more transactions` : ""}
 
 User's question: "${question}"
 
 Instructions:
-- Answer accurately using ONLY the data above
-- Use ₹ symbol and Indian number format (e.g. ₹1,50,000)
-- Be concise — this is WhatsApp, keep it readable
-- Use WhatsApp formatting: *bold* for emphasis, • for bullet points
-- Calculate totals, averages, comparisons, breakdowns as needed
-- Be friendly and helpful
-- Do NOT use markdown tables, use simple lists
-- Keep response under 1000 characters when possible`;
+1. Answer ACCURATELY using ONLY the data provided
+2. Use ₹ symbol and Indian number format (₹1,50,000)
+3. Be CONCISE - this is WhatsApp (keep under 1000 chars when possible)
+4. Use WhatsApp formatting: *bold* for emphasis, • for bullets
+5. Calculate totals, averages, breakdowns, comparisons as needed
+6. If grouped data exists, present it clearly
+7. Be friendly and conversational
+8. NO markdown tables - use simple lists with emojis
+9. If data is limited, acknowledge it
+10. Provide actionable insights when relevant
+
+Focus on being helpful and clear, not just listing data.`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -858,57 +1169,49 @@ Instructions:
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
+      temperature: 0.7,
+      max_tokens: 800,
     }),
   });
 
   if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${errBody}`);
+    throw new Error(`Groq API error ${res.status}`);
   }
 
   const data = await res.json();
   return data.choices?.[0]?.message?.content || "Sorry, I couldn't process your question.";
 }
 
-/** Call Groq REST API to parse expenses from natural language */
+/** IMPROVED: Parse expenses with better prompt and validation */
 async function parseExpensesWithGroq(
   text: string,
   apiKey: string
 ): Promise<ParsedExpense[]> {
-  const prompt = `You are an AI that extracts structured expense data from natural language input.
+  const prompt = `You are an AI expense parser. Extract ALL expenses from the user's message.
 
-IMPORTANT: Extract ALL expenses mentioned in the text, even if multiple expenses are mentioned in a single sentence.
+CRITICAL: Find EVERY expense mentioned, even multiple in one sentence.
 
-For the input: '${text}'
+Input: "${text}"
 
-Return a JSON array of objects with this exact format:
-[
-  {
-    "amount": number,
-    "category": string,
-    "description": string
-  }
-]
-
-CATEGORY RULES:
-- Use only these categories: food, travel, groceries, entertainment, utilities, rent, other
-- food: restaurants, cafes, fast food, dining out
-- groceries: supermarket, grocery store, fresh food, household items
-- travel: transportation, fuel, parking, public transport, flights, hotels
-- entertainment: movies, games, hobbies, sports, concerts
-- utilities: electricity, water, gas, internet, phone bills
+CATEGORIES (use ONLY these):
+- food: restaurants, cafes, snacks, dining, takeout
+- groceries: supermarket, vegetables, household items
+- travel: fuel, parking, uber, auto, bus, train, flights, hotels
+- entertainment: movies, games, Netflix, hobbies, sports
+- utilities: electricity, water, gas, internet, phone bill
 - rent: housing rent, accommodation
-- other: anything that doesn't fit above categories
+- other: anything else
 
 DESCRIPTION RULES:
-- Keep descriptions short and clean (max 50 characters)
-- Extract the main item/service name
-- Remove unnecessary words like "spent", "bought", "paid"
+- Short and clean (max 50 chars)
+- Main item/service name only
+- Remove: "spent", "bought", "paid", "for"
+- Capitalize first letter
 
 EXAMPLES:
+
 Input: "spent 10 on coffee and 150 for groceries"
 Output: [
   {"amount": 10, "category": "food", "description": "Coffee"},
@@ -922,7 +1225,23 @@ Output: [
   {"amount": 15, "category": "travel", "description": "Parking"}
 ]
 
-Please extract all expenses from: '${text}'`;
+Input: "Netflix 199, spotify 119"
+Output: [
+  {"amount": 199, "category": "entertainment", "description": "Netflix subscription"},
+  {"amount": 119, "category": "entertainment", "description": "Spotify subscription"}
+]
+
+Input: "dinner 500"
+Output: [
+  {"amount": 500, "category": "food", "description": "Dinner"}
+]
+
+Now extract from: "${text}"
+
+Return ONLY valid JSON array (no markdown, no explanation):
+[
+  {"amount": number, "category": string, "description": string}
+]`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -931,22 +1250,22 @@ Please extract all expenses from: '${text}'`;
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
+      temperature: 0.3,
+      max_tokens: 500,
     }),
   });
 
   if (!res.ok) {
     const errBody = await res.text();
-    console.error("Groq expense parsing failed:", res.status, errBody);
-    throw new Error(`Groq API error ${res.status}: ${errBody}`);
+    console.error("Groq parsing failed:", res.status, errBody);
+    throw new Error(`Groq API error ${res.status}`);
   }
 
   const data = await res.json();
   const responseText = data.choices?.[0]?.message?.content || "";
-  console.log("Groq expense parse response length:", responseText.length);
-
+  
   const cleanedJson = responseText
     .replace(/```json/g, "")
     .replace(/```/g, "")
@@ -954,16 +1273,158 @@ Please extract all expenses from: '${text}'`;
 
   const parsed: ParsedExpense[] = JSON.parse(cleanedJson);
 
-  // Validate
-  return parsed.filter(
-    (e) =>
+  // Validate and clean
+  return parsed
+    .filter(e =>
       e &&
       typeof e.amount === "number" &&
       e.amount > 0 &&
       typeof e.category === "string" &&
+      ["food", "travel", "groceries", "entertainment", "utilities", "rent", "other"].includes(e.category) &&
       typeof e.description === "string" &&
       e.description.trim().length > 0
-  );
+    )
+    .map(e => ({
+      ...e,
+      description: e.description.trim().slice(0, 100),
+    }));
+}
+
+/** NEW: Generate spending insights and suggestions */
+async function generateInsights(
+  question: string,
+  userId: string,
+  apiKey: string,
+  supabase: any
+): Promise<string> {
+  // Fetch recent spending data (last 90 days)
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("amount, category, description, date")
+    .eq("user_id", userId)
+    .gte("date", ninetyDaysAgo.toISOString())
+    .order("date", { ascending: false });
+
+  if (!expenses || expenses.length === 0) {
+    return "I need some expense data to provide insights. Start logging your expenses, and I'll help you understand your spending patterns! 📊";
+  }
+
+  // Calculate statistics
+  const now = new Date();
+  const thisMonth = expenses.filter((e: any) => {
+    const d = new Date(e.date);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+  
+  const lastMonth = expenses.filter((e: any) => {
+    const d = new Date(e.date);
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getMonth() === lastMonthDate.getMonth() && d.getFullYear() === lastMonthDate.getFullYear();
+  });
+
+  const byCategory: Record<string, number> = {};
+  expenses.forEach((e: any) => {
+    byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+  });
+
+  const totalThisMonth = thisMonth.reduce((sum: number, e: any) => sum + e.amount, 0);
+  const totalLastMonth = lastMonth.reduce((sum: number, e: any) => sum + e.amount, 0);
+  const avgDaily = totalThisMonth / now.getDate();
+
+  const categoryStats = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([cat, amt]) => `${cat}: ₹${amt}`);
+
+  const prompt = `You are Spenny AI, a financial insights assistant. Provide personalized spending advice.
+
+User's question: "${question}"
+
+SPENDING DATA (last 90 days):
+- This month: ${thisMonth.length} expenses, ₹${totalThisMonth}
+- Last month: ${lastMonth.length} expenses, ₹${totalLastMonth}
+- Average daily spend: ₹${avgDaily.toFixed(0)}
+- Top categories: ${categoryStats.join(", ")}
+
+Recent expenses (sample):
+${expenses.slice(0, 20).map((e: any) => 
+  `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+).join("\n")}
+
+Instructions:
+1. Provide ACTIONABLE insights based on the data
+2. Be specific with numbers and comparisons
+3. Suggest realistic ways to save money
+4. Use WhatsApp formatting: *bold*, • bullets
+5. Be encouraging and positive
+6. Keep under 1000 characters
+7. Focus on what the user asked about
+
+Examples of good insights:
+- "Your food spending is ₹X this month vs ₹Y last month. Consider meal planning to save!"
+- "You spent ₹X on [category]. Here are 3 ways to reduce..."
+- "Compared to last month, you're spending Z% more on [category]"
+
+Provide helpful, specific advice now.`;
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      max_tokens: 700,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Insights API error ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "I couldn't generate insights at this time.";
+}
+
+/** Get user context for better responses */
+async function getUserContext(userId: string, supabase: any): Promise<ConversationContext> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const { data: monthExpenses } = await supabase
+    .from("expenses")
+    .select("amount, category, description")
+    .eq("user_id", userId)
+    .gte("date", monthStart.toISOString())
+    .limit(10);
+
+  if (!monthExpenses || monthExpenses.length === 0) {
+    return { userId, phone: "" };
+  }
+
+  const total = monthExpenses.reduce((sum: number, e: any) => sum + e.amount, 0);
+  
+  const byCategory: Record<string, number> = {};
+  monthExpenses.forEach((e: any) => {
+    byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+  });
+  
+  const topCategory = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  return {
+    userId,
+    phone: "",
+    recentExpenses: monthExpenses,
+    monthlyTotal: total,
+    topCategory,
+  };
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -1078,7 +1539,6 @@ Deno.serve(async (req: Request) => {
         messageText = message.text.body.trim();
       } else if (message.type === "audio" && message.audio?.id) {
         // We need the user's Groq key for transcription, so look up profile first
-        // (profile lookup is duplicated below for text commands, but needed here for audio)
         const { data: audioProfile } = await supabase
           .from("profiles")
           .select("id, groq_api_key")
@@ -1154,7 +1614,7 @@ Deno.serve(async (req: Request) => {
       if (messageText.toLowerCase() === "help") {
         await sendWhatsAppReply(
           senderPhone,
-          `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "Top spending categories"\n\n📤 *Export:*\n• *export* - Download your expenses (CSV)\n\n⚡ *Quick commands:*\n• *help* - This message\n• *today* - Today's expenses\n• *total* - This month's summary\n• *export* - Download expenses`,
+          `*Spenny AI - Expense Tracker*\n\n📝 *Add expenses:*\n• "Spent 50 on coffee"\n• "Lunch 150, auto 30, movie 500"\n• 🎙️ Send a voice note!\n\n❓ *Ask anything:*\n• "How much did I spend last month?"\n• "Show my food expenses this week"\n• "Top spending categories"\n\n📤 *Export:*\n• *export* - Download your expenses (CSV/PDF)\n\n💡 *Get Insights:*\n• "How can I save money?"\n• "Compare this month vs last"\n\n⚡ *Quick commands:*\n• *help* - This message\n• *today* - Today's expenses\n• *total* - This month's summary\n• *export* - Download expenses`,
           WHATSAPP_PHONE_NUMBER_ID,
           WHATSAPP_TOKEN
         );
@@ -1193,8 +1653,12 @@ Deno.serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
+      // Get user context for better responses
+      const context = await getUserContext(userId, supabase);
+      context.phone = senderPhone;
+
       // ── Export flow: follow-up questions (period → format) ──
-      let intent: "expense" | "query" | "conversation" | "export" | null = null;
+      let intent: "expense" | "query" | "conversation" | "export" | "insights" | null = null;
       const exportState = await getExportState(supabase, senderPhone);
       if (exportState) {
         const cancelMsg = messageText.trim().toLowerCase();
@@ -1286,8 +1750,9 @@ Deno.serve(async (req: Request) => {
       if (messageText.trim().toLowerCase() === "export") {
         intent = "export";
       } else {
-        intent = await classifyIntent(messageText, groqKey);
+        intent = await classifyIntent(messageText, groqKey, context);
       }
+      
       if (intent === "export") {
         const parsed = await parseExportIntentFromMessage(messageText, groqKey);
         const hasPeriod = parsed.start_date && parsed.end_date;
@@ -1440,11 +1905,11 @@ Deno.serve(async (req: Request) => {
         return new Response("OK", { status: 200 });
       }
 
-      // ── Classify: expense entry, expense question, or general conversation (intent already set above) ──
+      // ── Classify: expense entry, expense question, insights, or general conversation ──
       console.log(`💡 Intent: ${intent} for message: "${messageText}"`);
 
       if (intent === "conversation") {
-        const reply = getConversationReply(messageText);
+        const reply = getConversationReply(messageText, context);
         await sendWhatsAppReply(
           senderPhone,
           reply,
@@ -1474,6 +1939,33 @@ Deno.serve(async (req: Request) => {
           await sendWhatsAppReply(
             senderPhone,
             "Sorry, I had trouble answering that. Please try rephrasing your question.",
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+        }
+        return new Response("OK", { status: 200 });
+      }
+
+      if (intent === "insights") {
+        console.log("[webhook] Insights intent, generating advice");
+        try {
+          const insights = await generateInsights(
+            messageText,
+            userId,
+            groqKey,
+            supabase
+          );
+          await sendWhatsAppReply(
+            senderPhone,
+            insights,
+            WHATSAPP_PHONE_NUMBER_ID,
+            WHATSAPP_TOKEN
+          );
+        } catch (insightError) {
+          console.error("Insights error:", insightError);
+          await sendWhatsAppReply(
+            senderPhone,
+            "Sorry, I couldn't generate insights right now. Please try again later.",
             WHATSAPP_PHONE_NUMBER_ID,
             WHATSAPP_TOKEN
           );
