@@ -199,6 +199,9 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [userGroqKey, setUserGroqKey] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => localStorage.getItem("sidebarCollapsed") === "true"
+  );
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1241,18 +1244,23 @@ Please extract all expenses from: '${text}'`,
       ? `Welcome Back, ${userName}!`
       : (ROUTE_TITLES[location.pathname] ?? "Spenny AI");
 
+  const handleSetCollapsed = (val: boolean) => {
+    setIsSidebarCollapsed(val);
+    localStorage.setItem("sidebarCollapsed", String(val));
+  };
+
   return (
     <>
       <PWAInstallPrompt />
-      <div className="flex h-screen bg-background text-foreground">
-        <div className="md:flex">
-          <Sidebar
-            user={session.user}
-            isOpen={isSidebarOpen}
-            setIsOpen={setIsSidebarOpen}
-          />
-        </div>
-        <main className={`flex-1 overflow-y-auto ${location.pathname === "/sage" ? "flex flex-col" : "p-4 md:p-8"}`}>
+      <div className="flex h-screen bg-background text-foreground overflow-hidden">
+        <Sidebar
+          user={session.user}
+          isOpen={isSidebarOpen}
+          setIsOpen={setIsSidebarOpen}
+          isCollapsed={isSidebarCollapsed}
+          setIsCollapsed={handleSetCollapsed}
+        />
+        <main className={`flex-1 overflow-y-auto min-w-0 ${location.pathname === "/sage" ? "flex flex-col" : "p-4 md:p-8"}`}>
           {location.pathname === "/sage" ? (
             /* Sage: slim bar — hamburger on mobile + mode toggle, no title */
             <div className="flex justify-between items-center px-3 py-2 shrink-0">
