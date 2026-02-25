@@ -36,6 +36,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
+import SagePage from "./pages/SagePage";
 import Groq from "groq-sdk";
 
 interface Expense {
@@ -1251,9 +1252,10 @@ Please extract all expenses from: '${text}'`,
             setIsOpen={setIsSidebarOpen}
           />
         </div>
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-4">
+        <main className={`flex-1 overflow-y-auto ${location.pathname === "/sage" ? "flex flex-col" : "p-4 md:p-8"}`}>
+          {location.pathname === "/sage" ? (
+            /* Sage: slim bar — hamburger on mobile + mode toggle, no title */
+            <div className="flex justify-between items-center px-3 py-2 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1262,10 +1264,26 @@ Please extract all expenses from: '${text}'`,
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              <h1 className="text-lg md:text-2xl font-bold">{pageTitle}</h1>
+              {/* spacer so ModeToggle stays right even without the burger on desktop */}
+              <span className="hidden md:block" />
+              <ModeToggle />
             </div>
-            <ModeToggle />
-          </div>
+          ) : (
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden"
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                >
+                  <Menu className="h-6 w-6" />
+                </Button>
+                <h1 className="text-lg md:text-2xl font-bold">{pageTitle}</h1>
+              </div>
+              <ModeToggle />
+            </div>
+          )}
           <Toaster />
           {error && (
             <div className="bg-red-500 text-white p-4 rounded-md mb-4 flex justify-between items-center">
@@ -1318,6 +1336,7 @@ Please extract all expenses from: '${text}'`,
             <Route path="/api-keys" element={<ApiKeysPage />} />
             {/* MCP Server route protected until feature is enabled */}
             <Route path="/mcp-server" element={<Navigate to="/" replace />} />
+            <Route path="/sage" element={<SagePage />} />
             <Route
               path="/share-target"
               element={

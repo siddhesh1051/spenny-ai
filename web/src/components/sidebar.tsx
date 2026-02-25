@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Home, BarChart2, Settings, LogOut, Receipt, MessageCircle, Server } from "lucide-react";
+import { Home, BarChart2, Settings, LogOut, Receipt, MessageCircle, Server, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
@@ -67,10 +67,9 @@ export function Sidebar({
           <NavLink
             to="/"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
               }`
             }
             onClick={handleLinkClick}
@@ -81,10 +80,9 @@ export function Sidebar({
           <NavLink
             to="/transactions"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
               }`
             }
             onClick={handleLinkClick}
@@ -95,10 +93,9 @@ export function Sidebar({
           <NavLink
             to="/analytics"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
               }`
             }
             onClick={handleLinkClick}
@@ -109,10 +106,9 @@ export function Sidebar({
           <NavLink
             to="/whatsapp-integration"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
               }`
             }
             onClick={handleLinkClick}
@@ -131,12 +127,27 @@ export function Sidebar({
             </span>
           </div>
           <NavLink
+            to="/sage"
+            className={({ isActive }) =>
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
+              }`
+            }
+            onClick={handleLinkClick}
+          >
+            <Sparkles className="mr-3 h-5 w-5 shrink-0" />
+            <span className="flex-1">Sage</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-green-300 text-green-900 dark:bg-green-600/30 dark:text-green-700">
+              New
+            </span>
+          </NavLink>
+          <NavLink
             to="/settings"
             className={({ isActive }) =>
-              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
+              `flex items-center px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer ${isActive
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
               }`
             }
             onClick={handleLinkClick}
