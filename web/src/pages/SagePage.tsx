@@ -178,7 +178,7 @@ function ResponseCard({ data, visible }: { data: AIResponse; visible: boolean })
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
-export default function SagePage() {
+export default function SagePage({ onSend }: { onSend?: () => void }) {
   const [messages, setMessages]             = useState<Message[]>([]);
   const [input, setInput]                   = useState("");
   const [isThinking, setIsThinking]         = useState(false);
@@ -224,6 +224,8 @@ export default function SagePage() {
     const trimmed = text.trim();
     if (!trimmed || isThinking) return;
 
+    onSend?.();
+
     if (!chatMode) {
       setWelcomeLeaving(true);
       await new Promise(r => setTimeout(r, 260));
@@ -248,7 +250,7 @@ export default function SagePage() {
     const aiMsg: Message = { id: crypto.randomUUID(), type: "assistant", content: "", data: DEMO_RESPONSE, timestamp: new Date() };
     setMessages(prev => [...prev, aiMsg]);
     setTimeout(() => setResponseVisible(true), 80);
-  }, [isThinking, chatMode, stopThinking]);
+  }, [isThinking, chatMode, stopThinking, onSend]);
 
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); sendMessage(input); };
 
