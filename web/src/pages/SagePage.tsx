@@ -188,7 +188,8 @@ export default function SagePage() {
   const [chatMode, setChatMode]             = useState(false);
   const [welcomeLeaving, setWelcomeLeaving] = useState(false);
 
-  const inputRef       = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const inputRef       = useRef<HTMLTextAreaElement>(null);
+  const chatInputRef   = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -289,7 +290,7 @@ export default function SagePage() {
             >
               <div className="relative bg-background border border-border rounded-2xl shadow-sm focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all overflow-hidden">
                 <textarea
-                  ref={inputRef as unknown as React.RefObject<HTMLTextAreaElement>}
+                  ref={inputRef}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   placeholder="What did I spend most on this month?"
@@ -387,7 +388,7 @@ export default function SagePage() {
                 <Plus className="h-4 w-4" />
               </button>
               <input
-                ref={inputRef}
+                ref={chatInputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 placeholder="Ask anything..."
