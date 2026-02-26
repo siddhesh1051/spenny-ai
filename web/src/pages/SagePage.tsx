@@ -42,6 +42,8 @@ import {
   FileText,
   ScanLine,
   Maximize2,
+  FileSpreadsheet,
+  Download,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -495,6 +497,7 @@ function AssistantResponse({
         )}
 
         {response.text && hasExpenses && <InsightBox text={response.text} />}
+
       </div>
     );
   }
@@ -525,6 +528,19 @@ function AssistantResponse({
   return null;
 }
 
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+
+function Tip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative group/tip inline-flex">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 rounded-md bg-popover border border-border shadow-md text-[11px] text-foreground whitespace-nowrap z-50 opacity-0 scale-95 group-hover/tip:opacity-100 group-hover/tip:scale-100 transition-all duration-150 origin-bottom">
+        {label}
+      </div>
+    </div>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -536,13 +552,136 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <button
-      onClick={handleCopy}
-      className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-      title="Copy"
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
+    <Tip label={copied ? "Copied!" : "Copy"}>
+      <button
+        onClick={handleCopy}
+        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+      >
+        {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </Tip>
+  );
+}
+
+function InlineExportButtons({
+  expenses,
+  title,
+  totalAmount,
+}: {
+  expenses: DbExpense[];
+  title?: string;
+  totalAmount?: number;
+}) {
+  const [csvDone, setCsvDone] = useState(false);
+  const [pdfDone, setPdfDone] = useState(false);
+
+  const slug = (title ?? "expenses").toLowerCase().replace(/\s+/g, "-").slice(0, 40);
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  const handleCSV = () => {
+    const header = ["Date", "Description", "Category", "Amount (INR)"];
+    const rows = expenses.map((e) => [
+      new Date(e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      `"${(e.description ?? "").replace(/"/g, '""')}"`,
+      e.category,
+      e.amount.toFixed(2),
+    ]);
+    const csv = [header, ...rows].map((r) => r.join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug}-${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setCsvDone(true);
+    setTimeout(() => setCsvDone(false), 2000);
+  };
+
+  const handlePDF = () => {
+    const total = totalAmount ?? expenses.reduce((s, e) => s + e.amount, 0);
+    const rows = expenses.map((e) => `<tr>
+      <td>${new Date(e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+      <td>${e.description ?? ""}</td>
+      <td><span class="badge badge-${e.category}">${e.category}</span></td>
+      <td class="amt">₹${e.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+    </tr>`).join("");
+
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<title>${title ?? "Expenses"} — Spenny</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;color:#111;background:#fff;padding:40px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;border-bottom:2px solid #f0f0f0;padding-bottom:16px}
+header h1{font-size:20px;font-weight:700}header span{font-size:12px;color:#888}
+.meta{display:flex;gap:24px;margin-bottom:20px}
+.meta-card{background:#f7f7f7;border-radius:10px;padding:12px 18px;min-width:140px}
+.meta-card .label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.meta-card .value{font-size:18px;font-weight:700}
+table{width:100%;border-collapse:collapse}
+thead th{background:#f7f7f7;text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#666;font-weight:600}
+thead th.amt{text-align:right}
+tbody tr{border-bottom:1px solid #f0f0f0}tbody tr:last-child{border-bottom:none}
+td{padding:10px 12px;vertical-align:middle}td.amt{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;text-transform:capitalize;background:#f0f0f0;color:#555}
+.badge-food{background:#fef3c7;color:#92400e}.badge-travel{background:#dbeafe;color:#1e40af}
+.badge-groceries{background:#dcfce7;color:#166534}.badge-entertainment{background:#f3e8ff;color:#7e22ce}
+.badge-utilities{background:#e0f2fe;color:#0369a1}.badge-rent{background:#fee2e2;color:#991b1b}
+.badge-other{background:#f1f5f9;color:#475569}
+tfoot td{padding:10px 12px;font-weight:700;border-top:2px solid #e5e7eb}tfoot td.amt{text-align:right;font-size:15px}
+footer{margin-top:32px;font-size:11px;color:#bbb;text-align:center}
+@media print{body{padding:20px}}
+</style></head><body>
+<header><h1>${title ?? "Expense Report"}</h1><span>Generated ${new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"})} · Spenny AI</span></header>
+<div class="meta">
+<div class="meta-card"><div class="label">Total Spent</div><div class="value">₹${total.toLocaleString("en-IN",{minimumFractionDigits:2})}</div></div>
+<div class="meta-card"><div class="label">Transactions</div><div class="value">${expenses.length}</div></div>
+</div>
+<table>
+<thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="amt">Amount</th></tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr><td colspan="3">Total</td><td class="amt">₹${total.toLocaleString("en-IN",{minimumFractionDigits:2})}</td></tr></tfoot>
+</table>
+<footer>Exported from Spenny AI · ${dateStr}</footer>
+<script>window.onload=()=>window.print()<\/script>
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    if (win) { win.document.write(html); win.document.close(); }
+    setPdfDone(true);
+    setTimeout(() => setPdfDone(false), 2000);
+  };
+
+  return (
+    <>
+      <div className="w-px h-4 bg-border/60 mx-0.5" />
+      <Tip label={csvDone ? "Saved!" : "Download CSV"}>
+        <button
+          type="button"
+          onClick={handleCSV}
+          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-emerald-600 active:scale-95"
+        >
+          {csvDone
+            ? <Check className="h-3.5 w-3.5 text-emerald-500" />
+            : <FileSpreadsheet className="h-3.5 w-3.5" />
+          }
+        </button>
+      </Tip>
+      <Tip label={pdfDone ? "Opened!" : "Export PDF"}>
+        <button
+          type="button"
+          onClick={handlePDF}
+          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-rose-500 active:scale-95"
+        >
+          {pdfDone
+            ? <Check className="h-3.5 w-3.5 text-rose-400" />
+            : <Download className="h-3.5 w-3.5" />
+          }
+        </button>
+      </Tip>
+    </>
   );
 }
 
@@ -1589,12 +1728,38 @@ export default function SagePage({ onSend }: { onSend?: () => void }) {
                           {visible && (
                             <div className="flex items-center gap-0.5 mt-3">
                               <CopyButton text={getMessageCopyText(msg)} />
-                              <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-                                <ThumbsUp className="h-3.5 w-3.5" />
-                              </button>
-                              <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-                                <ThumbsDown className="h-3.5 w-3.5" />
-                              </button>
+                              <Tip label="Helpful">
+                                <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                                  <ThumbsUp className="h-3.5 w-3.5" />
+                                </button>
+                              </Tip>
+                              <Tip label="Not helpful">
+                                <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                                  <ThumbsDown className="h-3.5 w-3.5" />
+                                </button>
+                              </Tip>
+
+                              {/* Export icons — only for responses with expense data */}
+                              {msg.response && (() => {
+                                const r = msg.response!;
+                                const expenses: DbExpense[] =
+                                  r.expenses ??
+                                  (r.loggedExpenses ?? []).map((e) => ({
+                                    date: new Date().toISOString(),
+                                    description: e.description,
+                                    category: e.category,
+                                    amount: e.amount,
+                                  }));
+                                if (!expenses.length) return null;
+                                return (
+                                  <InlineExportButtons
+                                    expenses={expenses}
+                                    title={r.title}
+                                    totalAmount={r.totalAmount}
+                                  />
+                                );
+                              })()}
+
                               <span className="ml-auto text-xs text-muted-foreground/60">
                                 {msg.timestamp.toLocaleTimeString("en-IN", {
                                   hour: "2-digit",
@@ -1781,6 +1946,13 @@ export default function SagePage({ onSend }: { onSend?: () => void }) {
 
       {/* ── Animations & styles ───────────────────────────────────────── */}
       <style>{`
+        /* Cursor pointer on every interactive element */
+        button, [role="button"], [role="tab"], [role="checkbox"],
+        input[type="file"], input[type="submit"], input[type="button"],
+        select, label[for], a {
+          cursor: pointer !important;
+        }
+
         /* Gradient background */
         .sage-mesh-bg {
           background:
