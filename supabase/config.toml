@@ -1,3 +1,15 @@
 # Edge Function config: WhatsApp webhook must accept calls from Meta without a JWT
 [functions.whatsapp-webhook]
 verify_jwt = false
+
+# sage-chat: requires a valid user JWT from the web app
+[functions.sage-chat]
+verify_jwt = true
+
+# transcribe-audio: requires a valid user JWT from the web app
+[functions.transcribe-audio]
+verify_jwt = true
+
+# extract-receipt: requires a valid user JWT from the web app
+[functions.extract-receipt]
+verify_jwt = true
