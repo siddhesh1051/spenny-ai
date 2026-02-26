@@ -52,12 +52,12 @@ const DEMO_RESPONSE: AIResponse = {
   summary:
     "You've spent ₹12,399 so far in February across 5 categories. Food & dining is your biggest spend at ₹3,850 (31%), followed by travel at ₹2,800. You're tracking 18% over your usual February budget — mainly driven by dining out.",
   expenses: [
-    { description: "Swiggy orders",    category: "Food",          amount: "₹2,340", date: "25 Feb 2026" },
-    { description: "Uber & Ola rides", category: "Travel",        amount: "₹1,890", date: "24 Feb 2026" },
-    { description: "Big Basket",       category: "Groceries",     amount: "₹3,210", date: "22 Feb 2026" },
-    { description: "Netflix + Hotstar",category: "Entertainment", amount: "₹1,149", date: "20 Feb 2026" },
-    { description: "Electricity bill", category: "Utilities",     amount: "₹1,800", date: "18 Feb 2026" },
-    { description: "Zomato Pro",       category: "Food",          amount: "₹799",   date: "15 Feb 2026" },
+    { description: "Swiggy orders", category: "Food", amount: "₹2,340", date: "25 Feb 2026" },
+    { description: "Uber & Ola rides", category: "Travel", amount: "₹1,890", date: "24 Feb 2026" },
+    { description: "Big Basket", category: "Groceries", amount: "₹3,210", date: "22 Feb 2026" },
+    { description: "Netflix + Hotstar", category: "Entertainment", amount: "₹1,149", date: "20 Feb 2026" },
+    { description: "Electricity bill", category: "Utilities", amount: "₹1,800", date: "18 Feb 2026" },
+    { description: "Zomato Pro", category: "Food", amount: "₹799", date: "15 Feb 2026" },
   ],
   insight:
     "You've spent ₹3,139 on food this month — 34% more than last month. Your biggest spike is weekday Swiggy orders (avg ₹380/order). Cooking just 3 meals a week at home could save you ~₹1,200/month.",
@@ -70,15 +70,15 @@ const LOADING_STEPS = [
 ];
 
 const QUICK_QUESTIONS = [
-  { icon: BarChart2,      text: "What did I spend most on this month?" },
-  { icon: TrendingUp,     text: "How does this month compare to last?" },
-  { icon: UtensilsCrossed,text: "Show my food & dining expenses" },
-  { icon: TrendingDown,   text: "Where can I cut down spending?" },
-  { icon: Repeat2,        text: "Show all recurring subscriptions" },
-  { icon: ShoppingCart,   text: "What did I spend on groceries?" },
-  { icon: PiggyBank,      text: "How much have I saved this month?" },
-  { icon: CalendarDays,   text: "Break down expenses by week" },
-  { icon: Car,            text: "How much did I spend on travel?" },
+  { icon: BarChart2, text: "What did I spend most on this month?" },
+  { icon: TrendingUp, text: "How does this month compare to last?" },
+  { icon: UtensilsCrossed, text: "Show my food & dining expenses" },
+  { icon: TrendingDown, text: "Where can I cut down spending?" },
+  { icon: Repeat2, text: "Show all recurring subscriptions" },
+  { icon: ShoppingCart, text: "What did I spend on groceries?" },
+  { icon: PiggyBank, text: "How much have I saved this month?" },
+  { icon: CalendarDays, text: "Break down expenses by week" },
+  { icon: Car, text: "How much did I spend on travel?" },
 ];
 
 
@@ -93,23 +93,23 @@ function CloverIcon({ size = 32, spinning = false }: { size?: number; spinning?:
       xmlns="http://www.w3.org/2000/svg"
       style={spinning ? { animation: "raySpinLogo 1.4s linear infinite" } : undefined}
     >
-      <rect x="18" y="1"  width="12" height="20" rx="6" fill="#16a34a" />
+      <rect x="18" y="1" width="12" height="20" rx="6" fill="#16a34a" />
       <rect x="27" y="18" width="20" height="12" rx="6" fill="#16a34a" />
       <rect x="18" y="27" width="12" height="20" rx="6" fill="#16a34a" />
-      <rect x="1"  y="18" width="20" height="12" rx="6" fill="#16a34a" />
+      <rect x="1" y="18" width="20" height="12" rx="6" fill="#16a34a" />
     </svg>
   );
 }
 
 function CategoryBadge({ category }: { category: ExpenseCategory }) {
   const s: Record<ExpenseCategory, string> = {
-    Food:          "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-    Travel:        "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-    Groceries:     "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    Food: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    Travel: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    Groceries: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
     Entertainment: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-    Utilities:     "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-    Rent:          "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    Other:         "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+    Utilities: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+    Rent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+    Other: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${s[category]}`}>
@@ -179,19 +179,19 @@ function ResponseCard({ data, visible }: { data: AIResponse; visible: boolean })
 
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function SagePage({ onSend }: { onSend?: () => void }) {
-  const [messages, setMessages]             = useState<Message[]>([]);
-  const [input, setInput]                   = useState("");
-  const [isThinking, setIsThinking]         = useState(false);
-  const [thinkingStep, setThinkingStep]     = useState(0);
-  const [userName, setUserName]             = useState("there");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingStep, setThinkingStep] = useState(0);
+  const [userName, setUserName] = useState("there");
   const [responseVisible, setResponseVisible] = useState(false);
-  const [chatMode, setChatMode]             = useState(false);
+  const [chatMode, setChatMode] = useState(false);
   const [welcomeLeaving, setWelcomeLeaving] = useState(false);
 
-  const inputRef       = useRef<HTMLTextAreaElement>(null);
-  const chatInputRef   = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -346,7 +346,7 @@ export default function SagePage({ onSend }: { onSend?: () => void }) {
       {chatMode && (
         <div className="flex flex-col h-full ray-chat-enter">
           <div className="flex-1 overflow-y-auto px-4 py-6">
-            <div className="space-y-6 max-w-3xl mx-auto">
+            <div className="space-y-6 max-w-5xl mx-auto">
               {messages.map((msg, idx) => (
                 <div key={msg.id}>
                   {msg.type === "user" ? (
@@ -382,7 +382,7 @@ export default function SagePage({ onSend }: { onSend?: () => void }) {
 
           {/* Bottom input bar */}
           <div className="shrink-0 px-4 pb-4 pt-2 border-t bg-background ray-input-in">
-            <form onSubmit={handleSubmit} className="flex items-center gap-2 max-w-3xl mx-auto">
+            <form onSubmit={handleSubmit} className="flex items-center gap-2 max-w-5xl mx-auto">
               <button
                 type="button"
                 className="w-8 h-8 flex items-center justify-center rounded-full border hover:bg-muted transition-colors text-muted-foreground shrink-0"
