@@ -1344,7 +1344,15 @@ Please extract all expenses from: '${text}'`,
             <Route path="/api-keys" element={<ApiKeysPage />} />
             {/* MCP Server route protected until feature is enabled */}
             <Route path="/mcp-server" element={<Navigate to="/" replace />} />
-            <Route path="/sage" element={<SagePage onSend={() => handleSetCollapsed(true)} />} />
+            <Route
+              path="/sage"
+              element={
+                <SagePage
+                  onSend={() => handleSetCollapsed(true)}
+                  deleteExpense={deleteExpense}
+                />
+              }
+            />
             <Route
               path="/share-target"
               element={

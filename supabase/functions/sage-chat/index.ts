@@ -326,7 +326,7 @@ Rules:
       const { data: inserted, error: insertErr } = await db
         .from("expenses")
         .insert(toInsert)
-        .select();
+        .select("id, description, category, amount");
 
       if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
 
@@ -335,7 +335,8 @@ Rules:
       return jsonResponse({
         intent: "expense",
         text: `${inserted!.length} expense${inserted!.length > 1 ? "s" : ""} logged successfully!`,
-        loggedExpenses: (inserted ?? []).map((e: { description: string; category: string; amount: number }) => ({
+        loggedExpenses: (inserted ?? []).map((e: { id: string; description: string; category: string; amount: number }) => ({
+          id: e.id,
           description: e.description,
           category: e.category,
           amount: e.amount,

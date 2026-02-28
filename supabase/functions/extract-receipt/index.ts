@@ -222,7 +222,7 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   const { data: inserted, error: insertErr } = await db
     .from("expenses")
     .insert(toInsert)
-    .select();
+    .select("id, description, category, amount");
 
   if (insertErr) {
     console.error("[extract-receipt] DB insert error:", insertErr);
@@ -241,10 +241,12 @@ Return ONLY a valid JSON array — no markdown, no explanation:
     intent: "expense",
     text: `${count} expense${count !== 1 ? "s" : ""} extracted from your receipt!`,
     loggedExpenses: (inserted ?? []).map((e: {
+      id: string;
       description: string;
       category: string;
       amount: number;
     }) => ({
+      id: e.id,
       description: e.description,
       category: e.category,
       amount: e.amount,

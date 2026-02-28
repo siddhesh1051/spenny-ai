@@ -33,6 +33,7 @@ import {
   Repeat2,
   Star,
   RotateCcw,
+  Undo2,
   Mic,
   Square,
   Play,
@@ -74,6 +75,7 @@ interface MetricItem {
 }
 
 interface LoggedExpense {
+  id?: string;
   description: string;
   category: string;
   amount: number;
@@ -347,46 +349,101 @@ function ExpenseLoggedSection({
   loggedExpenses,
   totalAmount,
   text,
+  onUndo,
 }: {
   loggedExpenses: LoggedExpense[];
   totalAmount?: number;
   text: string;
+  onUndo?: (ids: string[]) => Promise<void>;
 }) {
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [undoingIds, setUndoingIds] = useState<Set<string>>(new Set());
+
+  const visibleExpenses = loggedExpenses.filter((e) => !e.id || !removedIds.has(e.id));
+  const visibleTotal = visibleExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const hasUndo = !!onUndo;
+
+  const handleUndoOne = async (id: string) => {
+    if (!onUndo || undoingIds.has(id)) return;
+    setUndoingIds((prev) => new Set(prev).add(id));
+    try {
+      await onUndo([id]);
+      setRemovedIds((prev) => new Set(prev).add(id));
+    } catch {
+      toast.error("Couldn’t remove expense. Try again.");
+    } finally {
+      setUndoingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  if (visibleExpenses.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+        <span>Expenses removed.</span>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-          <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
-        </div>
-        <span className="font-semibold text-sm text-emerald-700 dark:text-emerald-400">{text}</span>
-      </div>
-      <div className="space-y-2">
-        {loggedExpenses.map((exp, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between rounded-xl border bg-background px-3.5 py-2.5 sage-logged-in"
-            style={{ animationDelay: `${i * 80}ms`, opacity: 0 }}
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="text-base leading-none">
-                {CATEGORY_EMOJI[exp.category.toLowerCase()] ?? "📦"}
-              </span>
-              <div>
-                <div className="text-sm font-medium">{exp.description}</div>
-                <CategoryBadge category={exp.category} />
-              </div>
-            </div>
-            <span className="text-sm font-bold tabular-nums">
-              ₹{exp.amount.toLocaleString("en-IN")}
-            </span>
+    <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+      <div className="p-3.5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+            <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
           </div>
-        ))}
-      </div>
-      {(loggedExpenses.length ?? 0) > 1 && totalAmount !== undefined && (
-        <div className="flex justify-end mt-2.5 text-sm font-bold text-foreground px-0.5">
-          Total: ₹{totalAmount.toLocaleString("en-IN")}
+          <span className="font-semibold text-sm text-emerald-700 dark:text-emerald-400 shrink-0">{text}</span>
         </div>
-      )}
+        <div className="space-y-2">
+          {visibleExpenses.map((exp, i) => {
+            const canUndoThis = !!exp.id && hasUndo;
+            const undoing = !!exp.id && undoingIds.has(exp.id);
+            return (
+              <div
+                key={exp.id ?? i}
+                className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2.5 sage-logged-in"
+                style={{ animationDelay: `${i * 80}ms`, opacity: 0 }}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className="text-base leading-none shrink-0">
+                    {CATEGORY_EMOJI[exp.category.toLowerCase()] ?? "📦"}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{exp.description}</div>
+                    <CategoryBadge category={exp.category} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-bold tabular-nums">
+                    ₹{exp.amount.toLocaleString("en-IN")}
+                  </span>
+                  {canUndoThis && (
+                    <Tip label="Undo expense">
+                      <button
+                        type="button"
+                        onClick={() => handleUndoOne(exp.id!)}
+                        disabled={undoing}
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                      </button>
+                    </Tip>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {visibleExpenses.length > 1 && (
+          <div className="flex justify-end mt-2.5 text-sm font-bold text-foreground px-0.5">
+            Total: ₹{visibleTotal.toLocaleString("en-IN")}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -394,9 +451,11 @@ function ExpenseLoggedSection({
 function AssistantResponse({
   response,
   visible,
+  onUndoLoggedExpenses,
 }: {
   response: SageResponse;
   visible: boolean;
+  onUndoLoggedExpenses?: (ids: string[]) => Promise<void>;
 }) {
   const style: React.CSSProperties = {
     opacity: visible ? 1 : 0,
@@ -415,12 +474,15 @@ function AssistantResponse({
 
   // ── Expense logged ──
   if (response.intent === "expense") {
+    const logged = response.loggedExpenses ?? [];
+    const ids = logged.map((e) => e.id).filter((id): id is string => !!id);
     return (
       <div style={style}>
         <ExpenseLoggedSection
-          loggedExpenses={response.loggedExpenses ?? []}
+          loggedExpenses={logged}
           totalAmount={response.totalAmount}
           text={response.text}
+          onUndo={onUndoLoggedExpenses && ids.length > 0 ? (idsToUndo) => onUndoLoggedExpenses(idsToUndo) : undefined}
         />
       </div>
     );
@@ -920,7 +982,20 @@ function ReceiptBubble({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function SagePage({ onSend }: { onSend?: () => void }) {
+export default function SagePage({
+  onSend,
+  deleteExpense,
+}: {
+  onSend?: () => void;
+  deleteExpense?: (id: string) => Promise<void>;
+}) {
+  const onUndoLoggedExpenses = useCallback(
+    async (ids: string[]) => {
+      if (!deleteExpense) return;
+      for (const id of ids) await deleteExpense(id);
+    },
+    [deleteExpense]
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -1711,7 +1786,11 @@ export default function SagePage({ onSend }: { onSend?: () => void }) {
                         </div>
                         <div className="flex-1 min-w-0">
                           {msg.response ? (
-                            <AssistantResponse response={msg.response} visible={visible} />
+                            <AssistantResponse
+                              response={msg.response}
+                              visible={visible}
+                              onUndoLoggedExpenses={deleteExpense ? onUndoLoggedExpenses : undefined}
+                            />
                           ) : (
                             <div
                               style={{
