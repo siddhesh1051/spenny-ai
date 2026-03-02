@@ -17,6 +17,7 @@
     "e2e:slow": "cross-env SLOW_MO=1000 playwright test --headed --project=chromium"
   },
   "dependencies": {
+    "@spenny/sage-chat-sdk": "file:../sage-chat-sdk",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-dropdown-menu": "^2.1.15",

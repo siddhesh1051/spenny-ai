@@ -36,7 +36,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
-import SagePage from "./pages/SagePage";
+import SageGenPage from "./pages/SageGenPage";
 import Groq from "groq-sdk";
 
 interface Expense {
@@ -1347,9 +1347,8 @@ Please extract all expenses from: '${text}'`,
             <Route
               path="/sage"
               element={
-                <SagePage
+                <SageGenPage
                   onSend={() => handleSetCollapsed(true)}
-                  deleteExpense={deleteExpense}
                 />
               }
             />
