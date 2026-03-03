@@ -253,7 +253,7 @@ function MetricsRow({ metrics }: { metrics: MetricItem[] }) {
       {metrics.map((m, i) => (
         <div
           key={i}
-          className="rounded-xl border bg-background p-3 sage-metric-in"
+          className="rounded-xl border bg-card/80 backdrop-blur-sm p-3 sage-metric-in"
           style={{ animationDelay: `${i * 90}ms`, opacity: 0 }}
         >
           <div className="text-xs text-muted-foreground mb-1 truncate">{m.label}</div>
