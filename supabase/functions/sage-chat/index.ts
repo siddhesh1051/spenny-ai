@@ -42,15 +42,6 @@ interface QueryFilters {
   search_description: string | null;
 }
 
-type ChartKind = "category_pie" | "category_bar";
-
-interface ChartConfig {
-  kind: ChartKind;
-  xKey: string;
-  yKey: string;
-  data: { name: string; value: number; percentage?: number }[];
-}
-
 // ── Groq helpers ─────────────────────────────────────────────────────────────
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -209,6 +200,62 @@ Rules:
   };
 }
 
+// ── UI Component Catalog (injected into AI prompts) ──────────────────────────
+
+const UI_COMPONENT_CATALOG = `
+## Available UI Components
+
+You can use the following node types to compose the "layout" field.
+The root "layout" must always be a "column" node.
+
+### Structural nodes
+
+**column** – vertical stack of children
+{ "kind": "column", "children": [ ...nodes ] }
+
+**row** – horizontal grid, best for 2-4 metric cards side by side
+{ "kind": "row", "children": [ ...summary nodes ] }
+
+### Content nodes
+
+**block** – text block, style controls appearance
+{ "kind": "block", "style": "subheading"|"body"|"insight", "text": "..." }
+- "subheading": small grey uppercase label/title
+- "body": regular paragraph text
+- "insight": green highlighted insight box — use for AI-generated conclusions, tips, observations
+
+**summary** – a single metric card (heading + value)
+{ "kind": "summary", "id": "unique-id", "heading": "Label", "primary": "₹1,200", "secondary": "optional note or null", "sentiment": "up"|"down"|"neutral" }
+- sentiment "up" = green, "down" = orange, "neutral" = grey for the secondary text
+
+### Data visualisation nodes
+
+**visual** – chart (choose the right type for the data)
+{ "kind": "visual", "variant": "donut"|"bars", "x": "name", "y": "value", "points": [ { "label": "food", "value": 1200, "share": 45 }, ... ] }
+- "donut": pie/donut chart — best for ≤5 categories showing proportions
+- "bars": bar chart — best for >5 categories or when comparing values over time
+- "share" is optional (percentage 0-100)
+
+**table** – data table of expense records (shows a "Show more" button if >10 rows)
+{ "kind": "table", "variant": "records", "rows": [ { "id": "uuid", "date": "ISO string", "description": "Coffee", "category": "food", "amount": 200 }, ... ] }
+- Use ONLY when the user explicitly asks to see their transactions/records
+- Cap to 50 rows max
+
+**collection** – list of just-logged expenses with undo capability
+{ "kind": "collection", "variant": "items", "text": "N expense(s) logged successfully!", "items": [ { "id": "uuid", "description": "...", "category": "...", "amount": number }, ... ] }
+- Use ONLY for the expense logging intent to show what was just saved
+
+## Composition rules
+- Always wrap everything in a "column" root
+- Put metric cards in a "row" (2-4 per row looks best)
+- One chart per response is enough
+- Use "insight" block for AI-generated conclusions — always include one for query/insights intents
+- Use "subheading" blocks as section labels
+- Do NOT include a "table" unless the user explicitly asked to see their transactions/list
+- Do NOT include a chart if there is only 1 data category
+- Keep the layout concise — avoid redundant sections
+`.trim();
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function formatINR(n: number): string {
@@ -273,30 +320,31 @@ Deno.serve(async (req: Request) => {
     // CONVERSATION
     // ────────────────────────────────────────────────────────────────────────
     if (intent === "conversation") {
-      const text = await groqChat(
+      const uiResponse = await groqJSON<{ layout: unknown }>(
         `You are Spenny AI, a friendly and smart expense tracking assistant.
-Respond helpfully and concisely to: "${message}"
+User message: "${message}"
+
+${UI_COMPONENT_CATALOG}
+
+Respond helpfully and concisely.
 If asked what you can do, mention: log expenses by text, answer questions about spending history, and give financial insights.
-Keep under 80 words. Plain text only, no markdown or bullet points.`,
+Keep responses under 80 words. Use only "block" nodes (body or insight style). No charts, no tables, no summaries.
+
+Return ONLY valid JSON (no markdown):
+{ "layout": { "kind": "column", "children": [ ...block nodes ] } }`,
         groqKey,
         0.8,
-        150
+        300
       );
 
-      const uiResponse = {
+      const fallback = {
         layout: {
-          kind: "column" as const,
-          children: [
-            {
-              kind: "block" as const,
-              style: "body" as const,
-              text,
-            },
-          ],
+          kind: "column",
+          children: [{ kind: "block", style: "body", text: "I'm here to help with your expenses!" }],
         },
       };
 
-      return jsonResponse({ intent: "conversation", uiResponse });
+      return jsonResponse({ intent: "conversation", uiResponse: uiResponse ?? fallback });
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -365,28 +413,53 @@ Rules:
 
       const total = rows.reduce((s: number, e) => s + e.amount, 0);
 
-      const uiResponse = {
+      // AI decides the layout — but the collection node (with real IDs for undo) is mandatory
+      // We pass the collection node as a pre-built object and let AI compose around it
+      const collectionNode = {
+        kind: "collection",
+        variant: "items",
+        text: `${rows.length} expense${rows.length > 1 ? "s" : ""} logged successfully!`,
+        items: rows,
+      };
+
+      const expenseSummary = rows.map(r => `- ${r.description} (${r.category}): ${formatINR(r.amount)}`).join("\n");
+
+      const aiLayout = await groqJSON<{ layout: unknown }>(
+        `You are Spenny AI. The user just logged ${rows.length} expense${rows.length > 1 ? "s" : ""} totalling ${formatINR(total)}.
+
+Logged expenses:
+${expenseSummary}
+
+${UI_COMPONENT_CATALOG}
+
+Compose a concise confirmation UI. Rules:
+- MUST include this exact collection node as one of the children (do not modify it):
+${JSON.stringify(collectionNode)}
+- Optionally add a "block" subheading before it (e.g. "2 expenses logged")
+- Optionally add a brief "block" body or "insight" message after (1 sentence max, encouraging)
+- Do NOT add charts, tables, or summary cards for expense logging
+- Keep it minimal and celebratory
+
+Return ONLY valid JSON (no markdown):
+{ "layout": { "kind": "column", "children": [ ...nodes including the collection node ] } }`,
+        groqKey,
+        0.7,
+        600
+      );
+
+      const fallbackUiResponse = {
         layout: {
-          kind: "column" as const,
+          kind: "column",
           children: [
-            {
-              kind: "block" as const,
-              style: "subheading" as const,
-              text: `${rows.length} expense${rows.length > 1 ? "s" : ""} logged`,
-            },
-            {
-              kind: "collection" as const,
-              variant: "items" as const,
-              text: `${rows.length} expense${rows.length > 1 ? "s" : ""} logged successfully!`,
-              items: rows,
-            },
+            { kind: "block", style: "subheading", text: `${rows.length} expense${rows.length > 1 ? "s" : ""} logged` },
+            collectionNode,
           ],
         },
       };
 
       return jsonResponse({
         intent: "expense",
-        uiResponse,
+        uiResponse: aiLayout ?? fallbackUiResponse,
       });
     }
 
@@ -414,28 +487,25 @@ Rules:
       if (qErr) throw new Error(`Query: ${qErr.message}`);
 
       if (!expenses?.length) {
-        const uiResponse = {
+        const uiResponse = await groqJSON<{ layout: unknown }>(
+          `You are Spenny AI. The user asked: "${message}" but no matching expenses were found.
+
+${UI_COMPONENT_CATALOG}
+
+Create a friendly empty-state UI using only "block" nodes (subheading + body). No charts, no tables.
+Return ONLY valid JSON: { "layout": { "kind": "column", "children": [...] } }`,
+          groqKey, 0.7, 200
+        ) ?? {
           layout: {
             kind: "column",
             children: [
-              {
-                kind: "block",
-                style: "subheading",
-                text: "No results",
-              },
-              {
-                kind: "block",
-                style: "body",
-                text: "No expenses found for that query. Start logging expenses to see them here!",
-              },
+              { kind: "block", style: "subheading", text: "No results" },
+              { kind: "block", style: "body", text: "No expenses found for that query. Start logging expenses to see them here!" },
             ],
           },
         };
 
-        return jsonResponse({
-          intent: "query",
-          uiResponse,
-        });
+        return jsonResponse({ intent: "query", uiResponse });
       }
 
       const totalAmount = expenses.reduce((s: number, e: { amount: number }) => s + e.amount, 0);
@@ -456,7 +526,6 @@ Rules:
           percentage: Math.round((total / totalAmount) * 100),
         }));
 
-      // AI summary (concise)
       const sampleLines = expenses
         .slice(0, 20)
         .map((e: { date: string; category: string; description: string; amount: number }) =>
@@ -467,24 +536,9 @@ Rules:
         .map((c) => `${c.category}: ${formatINR(c.total)} (${c.count} txns, ${c.percentage}%)`)
         .join(", ");
 
-      const summaryText = await groqChat(
-        `Answer this expense question: "${message}"
-
-Data: ${expenses.length} transactions, total ${formatINR(totalAmount)}
-Categories: ${catSummary}
-Sample transactions:
-${sampleLines}${expenses.length > 20 ? `\n...and ${expenses.length - 20} more` : ""}
-
-Write 2 sentences: first directly answer the question with specific numbers, second give one interesting observation or insight.
-Plain text only, no markdown, no bullet points, friendly tone.`,
-        groqKey, 0.7, 200
-      );
-
-      // Build title
+      // Build title context
       const parts: string[] = [];
-      if (filters.category) {
-        parts.push(filters.category.charAt(0).toUpperCase() + filters.category.slice(1));
-      }
+      if (filters.category) parts.push(filters.category.charAt(0).toUpperCase() + filters.category.slice(1));
       if (filters.start_date) {
         const from = new Date(filters.start_date);
         const to = filters.end_date ? new Date(filters.end_date) : new Date();
@@ -497,42 +551,7 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
           );
         }
       }
-      const title = parts.length > 0
-        ? `${parts.join(" · ")} expenses`
-        : "Your expenses";
-
-      const chart: ChartConfig | null =
-        categoryBreakdown.length > 1
-          ? {
-              kind: categoryBreakdown.length <= 4 ? "category_pie" : "category_bar",
-              xKey: "name",
-              yKey: "value",
-              data: categoryBreakdown.map((c) => ({
-                name: c.category,
-                value: c.total,
-                percentage: c.percentage,
-              })),
-            }
-          : null;
-
-      const summaryMetrics = [
-        {
-          label: "Total",
-          value: formatINR(totalAmount),
-        },
-        {
-          label: "Transactions",
-          value: String(expenses.length),
-        },
-        ...(filters.category
-          ? [
-              {
-                label: "Category",
-                value: filters.category.charAt(0).toUpperCase() + filters.category.slice(1),
-              },
-            ]
-          : []),
-      ];
+      const titleContext = parts.length > 0 ? `${parts.join(" · ")} expenses` : "Your expenses";
 
       const expenseRows = expenses.map((
         e: { id: string; date: string; description: string; category: string; amount: number },
@@ -544,60 +563,57 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
         amount: e.amount,
       }));
 
-      const uiResponse = {
+      const userAskedForList = /\b(list|show|display|all|transactions?|records?|history)\b/i.test(message);
+
+      const uiResponse = await groqJSON<{ layout: unknown }>(
+        `You are Spenny AI answering a spending query. User asked: "${message}"
+
+## Data available to you
+
+Total: ${formatINR(totalAmount)} across ${expenses.length} transactions
+Title context: "${titleContext}"
+Category breakdown:
+${catSummary}
+Sample transactions (up to 20):
+${sampleLines}${expenses.length > 20 ? `\n...and ${expenses.length - 20} more` : ""}
+User explicitly asked for a list/transactions: ${userAskedForList}
+Full transaction rows available (for table node): ${JSON.stringify(expenseRows.slice(0, 50))}
+
+${UI_COMPONENT_CATALOG}
+
+## Your task
+Design the best UI layout to answer this question. You decide:
+- Which metric summary cards to show (and what values)
+- Whether to show a chart (donut for ≤5 categories, bars for >5) — skip if only 1 category
+- Whether to show a table (ONLY if user explicitly asked for list/transactions)
+- What insight text to write (always include an "insight" block with 2 sentences: answer + observation)
+- How to label sections
+
+Use the exact JSON schema from the catalog. Return ONLY valid JSON (no markdown):
+{ "layout": { "kind": "column", "children": [ ...nodes ] } }`,
+        groqKey,
+        0.7,
+        1200
+      );
+
+      const fallbackUiResponse = {
         layout: {
           kind: "column",
           children: [
-            {
-              kind: "block",
-              style: "subheading",
-              text: title,
-            },
+            { kind: "block", style: "subheading", text: titleContext },
             {
               kind: "row",
-              children: summaryMetrics.map((m) => ({
-                kind: "summary",
-                id: m.label.toLowerCase().replace(/\s+/g, "-"),
-                heading: m.label,
-                primary: m.value,
-                secondary: null,
-                sentiment: "neutral",
-              })),
+              children: [
+                { kind: "summary", id: "total", heading: "Total", primary: formatINR(totalAmount), secondary: null, sentiment: "neutral" },
+                { kind: "summary", id: "txns", heading: "Transactions", primary: String(expenses.length), secondary: null, sentiment: "neutral" },
+              ],
             },
-            chart
-              ? {
-                  kind: "visual",
-                  variant: chart.kind === "category_pie" ? "donut" : "bars",
-                  x: chart.xKey,
-                  y: chart.yKey,
-                  points: chart.data.map((d) => ({
-                    label: d.name,
-                    value: d.value,
-                    share: d.percentage ?? null,
-                  })),
-                }
-              : null,
-            // Optional table of matching records, capped to 50 rows
-            expenseRows.length > 0
-              ? {
-                  kind: "table",
-                  variant: "records",
-                  rows: expenseRows.slice(0, 50),
-                }
-              : null,
-            {
-              kind: "block",
-              style: "insight",
-              text: summaryText,
-            },
-          ].filter(Boolean),
+            { kind: "block", style: "insight", text: `Found ${expenses.length} transactions totalling ${formatINR(totalAmount)}.` },
+          ],
         },
       };
 
-      return jsonResponse({
-        intent: "query",
-        uiResponse,
-      });
+      return jsonResponse({ intent: "query", uiResponse: uiResponse ?? fallbackUiResponse });
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -679,87 +695,77 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
         )
         .join("\n");
 
-      const insightText = await groqChat(
-        `You are Spenny AI, a friendly financial advisor.
+      const metricsContext = metrics.map(m => `${m.label}: ${m.value}${m.change ? ` (${m.change})` : ""}`).join("\n");
+      const catBreakdownContext = catBreakdown.map(c => `${c.category}: ${formatINR(c.total)} (${c.count} txns, ${c.percentage}%)`).join("\n");
 
-User question: "${message}"
+      const uiResponse = await groqJSON<{ layout: unknown }>(
+        `You are Spenny AI, a friendly financial advisor. User asked: "${message}"
 
-Spending data (last 90 days):
-- This month (${now.toLocaleString("default", { month: "long" })}): ${formatINR(totalThis)} (${thisM.length} expenses)
-- Last month: ${formatINR(totalLast)} (${lastM.length} expenses)
-- Change: ${pct > 0 ? "+" : ""}${pct}%
-- Daily average: ${formatINR(dailyAvg)}
-- Top categories: ${Object.entries(byCat90).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c, a]) => `${c}: ${formatINR(a)}`).join(", ")}
+## Spending data (last 90 days)
+
+Key metrics:
+${metricsContext}
+
+Category breakdown (top 6, 90 days):
+${catBreakdownContext}
+
+This month (${now.toLocaleString("default", { month: "long" })}): ${formatINR(totalThis)} (${thisM.length} expenses)
+Last month: ${formatINR(totalLast)} (${lastM.length} expenses)
+Month-over-month change: ${pct > 0 ? "+" : ""}${pct}%
 
 Recent transactions:
 ${sampleLines}
 
-Provide 2-3 actionable, specific insights. Mention real numbers from the data. Be encouraging and practical.
-Plain text only, no markdown, no asterisks, no bullet points.`,
-        groqKey, 0.8, 300
+Available visual data for chart:
+${JSON.stringify(catBreakdown.map(c => ({ label: c.category, value: c.total, share: c.percentage })))}
+
+${UI_COMPONENT_CATALOG}
+
+## Your task
+Design the best insight dashboard UI for this user. You decide:
+- Which metric cards to highlight (pick the most relevant 2-4 from the data above)
+- Whether and how to label sections with "subheading" blocks
+- Whether to show a chart (donut for ≤5 categories, bars for >5 categories) — recommended for insights
+- What actionable insights to write in an "insight" block (2-3 sentences with real numbers, encouraging, practical)
+- The order and grouping of sections
+
+Do NOT include a table. Keep it dashboard-like and informative.
+Return ONLY valid JSON (no markdown):
+{ "layout": { "kind": "column", "children": [ ...nodes ] } }`,
+        groqKey,
+        0.8,
+        1200
       );
 
-      const chart: ChartConfig | null =
-        catBreakdown.length > 1
-          ? {
-              kind: catBreakdown.length <= 4 ? "category_pie" : "category_bar",
-              xKey: "name",
-              yKey: "value",
-              data: catBreakdown.map((c) => ({
-                name: c.category,
-                value: c.total,
-                percentage: c.percentage,
-              })),
-            }
-          : null;
-
-      const uiResponse = {
+      const fallbackUiResponse = {
         layout: {
           kind: "column",
           children: [
             {
               kind: "row",
-              children: metrics.map((m) => ({
+              children: metrics.slice(0, 3).map((m) => ({
                 kind: "summary",
                 id: m.label.toLowerCase().replace(/\s+/g, "-"),
                 heading: m.label,
                 primary: m.value,
                 secondary: m.change ?? null,
-                sentiment:
-                  m.positive === undefined ? "neutral" : m.positive ? "up" : "down",
+                sentiment: m.positive === undefined ? "neutral" : m.positive ? "up" : "down",
               })),
             },
-            {
-              kind: "block",
-              style: "subheading",
-              text: "Spending breakdown (90 days)",
-            },
-            chart
-              ? {
-                  kind: "visual",
-                  variant: chart.kind === "category_pie" ? "donut" : "bars",
-                  x: chart.xKey,
-                  y: chart.yKey,
-                  points: chart.data.map((d) => ({
-                    label: d.name,
-                    value: d.value,
-                    share: d.percentage ?? null,
-                  })),
-                }
-              : null,
-            {
-              kind: "block",
-              style: "insight",
-              text: insightText,
-            },
+            { kind: "block", style: "subheading", text: "Spending breakdown (90 days)" },
+            catBreakdown.length > 1 ? {
+              kind: "visual",
+              variant: catBreakdown.length <= 5 ? "donut" : "bars",
+              x: "name",
+              y: "value",
+              points: catBreakdown.map(c => ({ label: c.category, value: c.total, share: c.percentage })),
+            } : null,
+            { kind: "block", style: "insight", text: `Your top spending category is ${catBreakdown[0]?.category ?? "unknown"} at ${formatINR(catBreakdown[0]?.total ?? 0)}.` },
           ].filter(Boolean),
         },
       };
 
-      return jsonResponse({
-        intent: "insights",
-        uiResponse,
-      });
+      return jsonResponse({ intent: "insights", uiResponse: uiResponse ?? fallbackUiResponse });
     }
 
     return jsonResponse({ intent: "conversation", text: "I'm here to help with your expenses!" });

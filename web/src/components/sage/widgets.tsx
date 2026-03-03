@@ -1,39 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Sector,
-} from "recharts";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Check, Copy, Download, FileSpreadsheet, LucideImage, Maximize2, Pause, Play, ScanLine, Star, Undo2, X } from "lucide-react";
+import { Check, Copy, Download, FileSpreadsheet, LucideImage, Maximize2, Pause, Play, ScanLine, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CategoryItem, ChartConfig, LoggedExpense, DbExpense, MetricItem, VoiceData, ReceiptData, SageResponse } from "./types";
-import type { ChartConfig as UiChartConfig } from "@/components/ui/chart";
+import type { CategoryItem, LoggedExpense, DbExpense, MetricItem, VoiceData, ReceiptData, SageResponse } from "./types";
 import { Skeleton } from "../ui/Skeleton";
 import { CATEGORY_EMOJI, CATEGORY_STYLES, LOADING_STEPS } from "@/constants";
 import { formatDuration } from "@/utils/sage";
 import { createPortal } from "react-dom";
-import { renderUiNode } from "./renderUiNode";
+import { UiRenderer } from "@spenny/ui-renderer";
+import type { UiLayout, UiNode, UiTableRow, UiCollectionItem } from "@spenny/ui-renderer";
 
 
 // If Tip is only used here, define it locally instead of importing
@@ -63,18 +38,63 @@ export function CategoryBadge({ category }: { category: string }) {
   );
 }
 
-export function InsightBox({ text }: { text: string }) {
-  return (
-    <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 p-4 mt-4">
-      <div className="flex items-center gap-2 mb-1.5">
-        <Star className="h-3.5 w-3.5 text-emerald-600 fill-emerald-500 shrink-0" />
-        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
-          Sage Insight
-        </span>
-      </div>
-      <p className="text-sm text-emerald-800 dark:text-emerald-300 leading-relaxed">{text}</p>
-    </div>
-  );
+// ── SDK adapter ───────────────────────────────────────────────────────────────
+// Maps backend domain-specific shapes (description/category/amount/date) to
+// the generic SDK shapes (label/badge/value/secondary) before passing to UiRenderer.
+
+function adaptLayoutForSdk(node: UiNode): UiNode {
+  if (node.kind === "column" || node.kind === "row") {
+    return { ...node, children: node.children.map(adaptLayoutForSdk) } as UiNode;
+  }
+  if (node.kind === "table") {
+    // Backend sends { id, date, description, category, amount }
+    // SDK expects { id?, label, badge?, value, secondary? }
+    const adapted = (node as unknown as {
+      kind: "table";
+      variant: "records";
+      rows: DbExpense[];
+    });
+    const sdkRows: UiTableRow[] = (adapted.rows ?? []).map((r) => ({
+      id: r.id,
+      label: r.description,
+      badge: r.category,
+      value: `₹${r.amount.toLocaleString("en-IN")}`,
+      secondary: r.date
+        ? new Date(r.date).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
+        : undefined,
+    }));
+    return { kind: "table", variant: "records", rows: sdkRows };
+  }
+  if (node.kind === "collection") {
+    // Backend sends { id, description, category, amount }
+    // SDK expects { id?, label, badge?, value, icon? }
+    const adapted = (node as unknown as {
+      kind: "collection";
+      variant: "items";
+      text: string;
+      items: LoggedExpense[];
+    });
+    const sdkItems: UiCollectionItem[] = (adapted.items ?? []).map((e) => ({
+      id: e.id,
+      label: e.description,
+      badge: e.category,
+      value: `₹${e.amount.toLocaleString("en-IN")}`,
+      icon: CATEGORY_EMOJI[e.category?.toLowerCase()] ?? "📦",
+    }));
+    return { kind: "collection", variant: "items", text: adapted.text ?? node.text, items: sdkItems };
+  }
+  return node;
+}
+
+function adaptUiResponseForSdk(layout: UiLayout): UiLayout {
+  return {
+    kind: "column",
+    children: layout.children.map(adaptLayoutForSdk),
+  };
 }
 
 export function CategoryBreakdownSection({ breakdown }: { breakdown: CategoryItem[] }) {
@@ -110,170 +130,6 @@ export function CategoryBreakdownSection({ breakdown }: { breakdown: CategoryIte
   );
 }
 
-export function ExpenseTableSection({ expenses }: { expenses: DbExpense[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const visibleExpenses = expanded ? expenses : expenses.slice(0, 10);
-  const canToggle = expenses.length > 10;
-
-  return (
-    <div className="rounded-xl border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className="pl-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-              Description
-            </TableHead>
-            <TableHead className="py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-              Category
-            </TableHead>
-            <TableHead className="py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wide text-right">
-              Amount
-            </TableHead>
-            <TableHead className="pr-4 py-2.5 font-medium text-muted-foreground text-xs uppercase tracking-wide hidden sm:table-cell">
-              Date
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibleExpenses.map((exp, i) => (
-            <TableRow
-              key={exp.id ?? i}
-              className="sage-row-in"
-              style={{ animationDelay: `${i * 55}ms`, opacity: 0 }}
-            >
-              <TableCell className="pl-4 py-2.5 font-medium text-sm">{exp.description}</TableCell>
-              <TableCell className="py-2.5">
-                <CategoryBadge category={exp.category} />
-              </TableCell>
-              <TableCell className="py-2.5 text-right font-semibold tabular-nums text-sm">
-                ₹{exp.amount.toLocaleString("en-IN")}
-              </TableCell>
-              <TableCell className="pr-4 py-2.5 text-muted-foreground text-sm hidden sm:table-cell">
-                {new Date(exp.date).toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {canToggle && (
-        <div className="flex justify-center border-t bg-muted/40">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="px-3 py-1.5 text-xs font-medium text-primary hover:text-primary/90"
-          >
-            {expanded ? "Show less" : `Show ${expenses.length - 10} more`}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function ExpenseLoggedSection({
-  loggedExpenses,
-  text,
-  onUndo,
-}: {
-  loggedExpenses: LoggedExpense[];
-  text: string;
-  onUndo?: (ids: string[]) => Promise<void>;
-}) {
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
-  const [undoingIds, setUndoingIds] = useState<Set<string>>(new Set());
-  const hasUndo = !!onUndo;
-
-  const visibleExpenses = loggedExpenses.filter((e) => !e.id || !removedIds.has(e.id));
-  const visibleTotal = visibleExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-  const handleUndoOne = async (id: string) => {
-    if (!onUndo || undoingIds.has(id)) return;
-    setUndoingIds((prev) => new Set(prev).add(id));
-    try {
-      await onUndo([id]);
-      setRemovedIds((prev) => new Set(prev).add(id));
-    } finally {
-      setUndoingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  if (visibleExpenses.length === 0) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-        <span>Items removed.</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-      <div className="p-3.5">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-            <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
-          </div>
-          <span className="font-semibold text-sm text-emerald-700 dark:text-emerald-400 shrink-0">
-            {text}
-          </span>
-        </div>
-        <div className="space-y-2">
-          {visibleExpenses.map((exp, i) => {
-            const canUndoThis = hasUndo;
-            const undoing = !!exp.id && undoingIds.has(exp.id);
-            return (
-              <div
-                key={exp.id ?? i}
-                className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2.5 sage-logged-in"
-                style={{ animationDelay: `${i * 80}ms`, opacity: 0 }}
-              >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <span className="text-base leading-none shrink-0">
-                    {CATEGORY_EMOJI[exp.category.toLowerCase()] ?? "📦"}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{exp.description}</div>
-                    <CategoryBadge category={exp.category} />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm font-bold tabular-nums">
-                    ₹{exp.amount.toLocaleString("en-IN")}
-                  </span>
-                  {canUndoThis && (
-                    <LocalTip label="Undo">
-                      <button
-                        type="button"
-                        onClick={() => exp.id && handleUndoOne(exp.id)}
-                        disabled={undoing}
-                        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-                      >
-                        <Undo2 className="h-3.5 w-3.5" />
-                      </button>
-                    </LocalTip>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {visibleExpenses.length > 1 && (
-          <div className="flex justify-end mt-2.5 text-sm font-bold text-foreground px-0.5">
-            Total: ₹{visibleTotal.toLocaleString("en-IN")}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function MetricsRow({ metrics }: { metrics: MetricItem[] }) {
   return (
@@ -312,132 +168,6 @@ export function MetricsRow({ metrics }: { metrics: MetricItem[] }) {
 }
 
 
-export function CategoryChart({ chart }: { chart: ChartConfig }) {
-  if (!chart?.data?.length) return null;
-
-  const isPie = chart.kind === "category_pie";
-  const COLORS = [
-    "var(--chart-1)",
-    "var(--chart-2)",
-    "var(--chart-3)",
-    "var(--chart-4)",
-    "var(--chart-5)",
-    "var(--muted-foreground)",
-  ];
-
-  const data = chart.data;
-  const chartConfig: UiChartConfig = {
-    value: {
-      label: "Amount",
-      color: "var(--foreground)",
-    },
-  };
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-
-  const renderActiveShape = (props: any) => {
-    const {
-      cx,
-      cy,
-      innerRadius,
-      outerRadius,
-      startAngle,
-      endAngle,
-      fill,
-    } = props;
-    return (
-      <g>
-        <Sector
-          cx={cx}
-          cy={cy}
-          innerRadius={innerRadius}
-          outerRadius={outerRadius + 4}
-          startAngle={startAngle}
-          endAngle={endAngle}
-          fill={fill}
-        />
-      </g>
-    );
-  };
-
-  return (
-    <div className="mt-4 mb-4 rounded-xl border bg-card/80 backdrop-blur-sm p-3.5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wide">
-          Category overview
-        </p>
-      </div>
-      <div className="h-56">
-        <ChartContainer config={chartConfig} className="w-full h-full">
-          {isPie ? (
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={58}
-                outerRadius={82}
-                paddingAngle={3}
-                stroke="var(--background)"
-                strokeWidth={2}
-                activeIndex={activeIndex ?? undefined}
-                activeShape={renderActiveShape}
-                onMouseEnter={(_, idx) => setActiveIndex(idx)}
-                onMouseLeave={() => setActiveIndex(null)}
-              >
-                {data.map((entry, index) => {
-                  const isActive = index === activeIndex;
-                  return (
-                    <Cell
-                      key={`cell-${entry.name}-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                      fillOpacity={isActive || activeIndex === null ? 1 : 0.35}
-                    />
-                  );
-                })}
-              </Pie>
-              <ChartTooltip content={<ChartTooltipContent />} />
-            </PieChart>
-          ) : (
-            <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid
-                stroke="color-mix(in srgb, var(--muted-foreground) 12%, transparent)"
-                vertical={false}
-                strokeDasharray="3 3"
-              />
-              <XAxis
-                dataKey="name"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tickMargin={4}
-                tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-              />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar
-                dataKey="value"
-                radius={[4, 4, 2, 2]}
-                maxBarSize={40}
-              >
-                {data.map((entry, index) => (
-                  <Cell
-                    key={`bar-${entry.name}-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                    fillOpacity={0.75}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          )}
-        </ChartContainer>
-      </div>
-    </div>
-  );
-}
 
 export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -860,163 +590,24 @@ export function AssistantResponse({
     transition: "opacity 0.4s ease, transform 0.4s ease",
   };
 
-  // ── Conversation ──
+  // All intents now use uiResponse driven by the SDK renderer
+  if (response.uiResponse?.layout) {
+    const adapted = adaptUiResponseForSdk(response.uiResponse.layout as UiLayout);
+    return (
+      <div style={style} className="space-y-4">
+        <UiRenderer
+          layout={adapted}
+          callbacks={{ onUndo: onUndoLoggedExpenses }}
+        />
+      </div>
+    );
+  }
+
+  // Legacy fallback for responses without uiResponse
   if (response.intent === "conversation") {
-    if (response.uiResponse?.layout) {
-      return (
-        <div style={style} className="text-sm leading-relaxed text-foreground">
-          {renderUiNode(response.uiResponse.layout, null)}
-        </div>
-      );
-    }
     return (
       <div style={style} className="text-sm leading-relaxed text-foreground">
         {response.text}
-      </div>
-    );
-  }
-
-  // ── Expense logged ──
-  if (response.intent === "expense") {
-    if (response.uiResponse?.layout) {
-      return (
-        <div style={style} className="space-y-3">
-          {renderUiNode(response.uiResponse.layout, undefined, undefined, onUndoLoggedExpenses)}
-        </div>
-      );
-    }
-    return null;
-  }
-
-  // ── Query ──
-  if (response.intent === "query") {
-    const hasUi = !!response.uiResponse?.layout;
-
-    if (hasUi) {
-      return (
-        <div style={style} className="space-y-4">
-          {renderUiNode(response.uiResponse!.layout, response.chart ?? null)}
-        </div>
-      );
-    }
-
-    const hasExpenses = (response.expenses?.length ?? 0) > 0;
-    const hasBreakdown = (response.categoryBreakdown?.length ?? 0) > 1;
-    const primaryIsBreakdown = response.groupBy === "category";
-    const hasChart = !!response.chart && response.chart.data.length > 0;
-
-    return (
-      <div style={style}>
-        {response.title && (
-          <h3 className="font-bold text-base mb-2 text-foreground">{response.title}</h3>
-        )}
-
-        {/* No results */}
-        {!hasExpenses && (
-          <p className="text-sm text-muted-foreground">{response.text}</p>
-        )}
-
-        {/* Category breakdown as primary view */}
-        {primaryIsBreakdown && hasBreakdown && hasExpenses && (
-          <Tabs defaultValue="breakdown" className="w-full">
-            <TabsList className="h-8 mb-3">
-              <TabsTrigger value="breakdown" className="text-xs h-6 px-3">
-                By Category
-              </TabsTrigger>
-              <TabsTrigger value="list" className="text-xs h-6 px-3">
-                All Expenses
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="breakdown" className="mt-0 space-y-3">
-              {hasChart ? (
-                <CategoryChart chart={response.chart!} />
-              ) : (
-                <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
-              )}
-              {response.totalAmount !== undefined && (
-                <div className="flex justify-between text-sm mt-3 px-0.5">
-                  <span className="text-muted-foreground">{response.expenses!.length} transactions</span>
-                  <span className="font-bold">Total: ₹{response.totalAmount.toLocaleString("en-IN")}</span>
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="list" className="mt-0">
-              <ExpenseTableSection expenses={response.expenses!} />
-              {response.totalAmount !== undefined && (
-                <div className="flex justify-between text-sm mt-2 px-0.5">
-                  <span className="text-muted-foreground">{response.expenses!.length} transactions</span>
-                  <span className="font-bold">Total: ₹{response.totalAmount.toLocaleString("en-IN")}</span>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        )}
-
-        {/* Normal expense list */}
-        {!primaryIsBreakdown && hasExpenses && (
-          <>
-            <ExpenseTableSection expenses={response.expenses!} />
-            {response.totalAmount !== undefined && (
-              <div className="flex justify-between items-center text-sm mt-2 px-0.5">
-                <span className="text-muted-foreground">{response.expenses!.length} transaction{response.expenses!.length !== 1 ? "s" : ""}</span>
-                <span className="font-bold">Total: ₹{response.totalAmount.toLocaleString("en-IN")}</span>
-              </div>
-            )}
-            {hasBreakdown && (
-              <div className="mt-4">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
-                  Category Breakdown
-                </p>
-                {hasChart ? (
-                  <CategoryChart chart={response.chart!} />
-                ) : (
-                  <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {response.text && hasExpenses && <InsightBox text={response.text} />}
-
-      </div>
-    );
-  }
-
-  // ── Insights ──
-  if (response.intent === "insights") {
-    const hasUi = !!response.uiResponse?.layout;
-    const hasChart = !!response.chart && response.chart.data.length > 0;
-
-    if (hasUi) {
-      return (
-        <div style={style} className="space-y-4">
-          {renderUiNode(response.uiResponse!.layout, response.chart ?? null)}
-        </div>
-      );
-    }
-
-    return (
-      <div style={style}>
-        {response.title && (
-          <h3 className="font-bold text-base mb-3 text-foreground">{response.title}</h3>
-        )}
-        {response.metrics && response.metrics.length > 0 && (
-          <MetricsRow metrics={response.metrics} />
-        )}
-        {(response.categoryBreakdown?.length ?? 0) > 0 && (
-          <div className="mb-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
-              Spending Breakdown (90 days)
-            </p>
-            {hasChart ? (
-              <CategoryChart chart={response.chart!} />
-            ) : (
-              <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
-            )}
-          </div>
-        )}
-        {response.text && <InsightBox text={response.text} />}
       </div>
     );
   }

@@ -25,7 +25,9 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@spenny/ui-renderer": ["../packages/ui-renderer/src/index.ts"],
+      "@spenny/ui-renderer/*": ["../packages/ui-renderer/src/*"]
     }
   },
   "include": ["src"],
