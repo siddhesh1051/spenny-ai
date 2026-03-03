@@ -278,9 +278,25 @@ Deno.serve(async (req: Request) => {
 Respond helpfully and concisely to: "${message}"
 If asked what you can do, mention: log expenses by text, answer questions about spending history, and give financial insights.
 Keep under 80 words. Plain text only, no markdown or bullet points.`,
-        groqKey, 0.8, 150
+        groqKey,
+        0.8,
+        150
       );
-      return jsonResponse({ intent: "conversation", text });
+
+      const uiResponse = {
+        layout: {
+          kind: "column" as const,
+          children: [
+            {
+              kind: "block" as const,
+              style: "body" as const,
+              text,
+            },
+          ],
+        },
+      };
+
+      return jsonResponse({ intent: "conversation", uiResponse });
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -339,18 +355,38 @@ Rules:
 
       if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
 
-      const total = (inserted ?? []).reduce((s: number, e: { amount: number }) => s + e.amount, 0);
-
-      return jsonResponse({
-        intent: "expense",
-        text: `${inserted!.length} expense${inserted!.length > 1 ? "s" : ""} logged successfully!`,
-        loggedExpenses: (inserted ?? []).map((e: { id: string; description: string; category: string; amount: number }) => ({
+      const rows =
+        inserted?.map((e: { id: string; description: string; category: string; amount: number }) => ({
           id: e.id,
           description: e.description,
           category: e.category,
           amount: e.amount,
-        })),
-        totalAmount: total,
+        })) ?? [];
+
+      const total = rows.reduce((s: number, e) => s + e.amount, 0);
+
+      const uiResponse = {
+        layout: {
+          kind: "column" as const,
+          children: [
+            {
+              kind: "block" as const,
+              style: "subheading" as const,
+              text: `${rows.length} expense${rows.length > 1 ? "s" : ""} logged`,
+            },
+            {
+              kind: "collection" as const,
+              variant: "items" as const,
+              text: `${rows.length} expense${rows.length > 1 ? "s" : ""} logged successfully!`,
+              items: rows,
+            },
+          ],
+        },
+      };
+
+      return jsonResponse({
+        intent: "expense",
+        uiResponse,
       });
     }
 
@@ -378,13 +414,27 @@ Rules:
       if (qErr) throw new Error(`Query: ${qErr.message}`);
 
       if (!expenses?.length) {
+        const uiResponse = {
+          layout: {
+            kind: "column",
+            children: [
+              {
+                kind: "block",
+                style: "subheading",
+                text: "No results",
+              },
+              {
+                kind: "block",
+                style: "body",
+                text: "No expenses found for that query. Start logging expenses to see them here!",
+              },
+            ],
+          },
+        };
+
         return jsonResponse({
           intent: "query",
-          title: "No results",
-          text: "No expenses found for that query. Start logging expenses to see them here!",
-          expenses: [],
-          totalAmount: 0,
-          categoryBreakdown: [],
+          uiResponse,
         });
       }
 
@@ -454,7 +504,7 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
       const chart: ChartConfig | null =
         categoryBreakdown.length > 1
           ? {
-              kind: categoryBreakdown.length <= 4 ? "category_bar" : "category_pie",
+              kind: categoryBreakdown.length <= 4 ? "category_pie" : "category_bar",
               xKey: "name",
               yKey: "value",
               data: categoryBreakdown.map((c) => ({
@@ -465,26 +515,88 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
             }
           : null;
 
+      const summaryMetrics = [
+        {
+          label: "Total",
+          value: formatINR(totalAmount),
+        },
+        {
+          label: "Transactions",
+          value: String(expenses.length),
+        },
+        ...(filters.category
+          ? [
+              {
+                label: "Category",
+                value: filters.category.charAt(0).toUpperCase() + filters.category.slice(1),
+              },
+            ]
+          : []),
+      ];
+
+      const expenseRows = expenses.map((
+        e: { id: string; date: string; description: string; category: string; amount: number },
+      ) => ({
+        id: e.id,
+        date: e.date,
+        description: e.description,
+        category: e.category,
+        amount: e.amount,
+      }));
+
+      const uiResponse = {
+        layout: {
+          kind: "column",
+          children: [
+            {
+              kind: "block",
+              style: "subheading",
+              text: title,
+            },
+            {
+              kind: "row",
+              children: summaryMetrics.map((m) => ({
+                kind: "summary",
+                id: m.label.toLowerCase().replace(/\s+/g, "-"),
+                heading: m.label,
+                primary: m.value,
+                secondary: null,
+                sentiment: "neutral",
+              })),
+            },
+            chart
+              ? {
+                  kind: "visual",
+                  variant: chart.kind === "category_pie" ? "donut" : "bars",
+                  x: chart.xKey,
+                  y: chart.yKey,
+                  points: chart.data.map((d) => ({
+                    label: d.name,
+                    value: d.value,
+                    share: d.percentage ?? null,
+                  })),
+                }
+              : null,
+            // Optional table of matching records, capped to 50 rows
+            expenseRows.length > 0
+              ? {
+                  kind: "table",
+                  variant: "records",
+                  rows: expenseRows.slice(0, 50),
+                }
+              : null,
+            {
+              kind: "block",
+              style: "insight",
+              text: summaryText,
+            },
+          ].filter(Boolean),
+        },
+      };
+
       return jsonResponse({
         intent: "query",
-        title,
-        text: summaryText,
-        expenses: expenses.map((e: { id: string; date: string; description: string; category: string; amount: number }) => ({
-          id: e.id,
-          date: e.date,
-          description: e.description,
-          category: e.category,
-          amount: e.amount,
-        })),
-        categoryBreakdown,
-        groupBy: filters.group_by,
-        totalAmount,
-        filters: {
-          startDate: filters.start_date,
-          endDate: filters.end_date,
-          category: filters.category,
-        },
-        chart,
+        uiResponse,
       });
     }
 
@@ -590,7 +702,7 @@ Plain text only, no markdown, no asterisks, no bullet points.`,
       const chart: ChartConfig | null =
         catBreakdown.length > 1
           ? {
-              kind: catBreakdown.length <= 4 ? "category_bar" : "category_pie",
+              kind: catBreakdown.length <= 4 ? "category_pie" : "category_bar",
               xKey: "name",
               yKey: "value",
               data: catBreakdown.map((c) => ({
@@ -601,14 +713,52 @@ Plain text only, no markdown, no asterisks, no bullet points.`,
             }
           : null;
 
+      const uiResponse = {
+        layout: {
+          kind: "column",
+          children: [
+            {
+              kind: "row",
+              children: metrics.map((m) => ({
+                kind: "summary",
+                id: m.label.toLowerCase().replace(/\s+/g, "-"),
+                heading: m.label,
+                primary: m.value,
+                secondary: m.change ?? null,
+                sentiment:
+                  m.positive === undefined ? "neutral" : m.positive ? "up" : "down",
+              })),
+            },
+            {
+              kind: "block",
+              style: "subheading",
+              text: "Spending breakdown (90 days)",
+            },
+            chart
+              ? {
+                  kind: "visual",
+                  variant: chart.kind === "category_pie" ? "donut" : "bars",
+                  x: chart.xKey,
+                  y: chart.yKey,
+                  points: chart.data.map((d) => ({
+                    label: d.name,
+                    value: d.value,
+                    share: d.percentage ?? null,
+                  })),
+                }
+              : null,
+            {
+              kind: "block",
+              style: "insight",
+              text: insightText,
+            },
+          ].filter(Boolean),
+        },
+      };
+
       return jsonResponse({
         intent: "insights",
-        title: "Spending Insights",
-        text: insightText,
-        metrics,
-        categoryBreakdown: catBreakdown,
-        totalAmount: totalThis,
-        chart,
+        uiResponse,
       });
     }
 
