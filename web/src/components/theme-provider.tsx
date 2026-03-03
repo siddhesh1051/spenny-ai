@@ -42,12 +42,24 @@ export function ThemeProvider({
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
-      root.classList.add(systemTheme);
-      return;
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+      const apply = () => {
+        const systemTheme = media.matches ? "dark" : "light";
+        root.classList.remove("light", "dark");
+        root.classList.add(systemTheme);
+      };
+
+      apply();
+
+      const handler = () => apply();
+      if (typeof media.addEventListener === "function") {
+        media.addEventListener("change", handler);
+        return () => media.removeEventListener("change", handler);
+      }
+      // Safari fallback
+      media.addListener(handler);
+      return () => media.removeListener(handler);
     }
     root.classList.add(theme);
   }, [theme]);

@@ -47,6 +47,23 @@ import {
   Download,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Sector,
+} from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig as UiChartConfig,
+} from "@/components/ui/chart";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,6 +98,15 @@ interface LoggedExpense {
   amount: number;
 }
 
+type ChartKind = "category_pie" | "category_bar";
+
+interface ChartConfig {
+  kind: ChartKind;
+  xKey: string;
+  yKey: string;
+  data: { name: string; value: number; percentage?: number }[];
+}
+
 interface SageResponse {
   intent: Intent;
   title?: string;
@@ -92,6 +118,7 @@ interface SageResponse {
   metrics?: MetricItem[];
   loggedExpenses?: LoggedExpense[];
   filters?: { startDate?: string | null; endDate?: string | null; category?: string | null };
+  chart?: ChartConfig | null;
 }
 
 interface VoiceData {
@@ -219,8 +246,8 @@ function MetricsRow({ metrics }: { metrics: MetricItem[] }) {
       className={cn(
         "grid gap-3 mb-4",
         metrics.length === 1 ? "grid-cols-1" :
-        metrics.length === 2 ? "grid-cols-2" :
-        "grid-cols-3"
+          metrics.length === 2 ? "grid-cols-2" :
+            "grid-cols-3"
       )}
     >
       {metrics.map((m, i) => (
@@ -278,6 +305,163 @@ function CategoryBreakdownSection({ breakdown }: { breakdown: CategoryItem[] }) 
           <Progress value={item.percentage} className="h-1.5" />
         </div>
       ))}
+    </div>
+  );
+}
+
+function CategoryChart({ chart }: { chart: ChartConfig }) {
+  if (!chart?.data?.length) return null;
+
+  const isPie = chart.kind === "category_pie";
+  const COLORS = [
+    "var(--chart-1)",
+    "var(--chart-2)",
+    "var(--chart-3)",
+    "var(--chart-4)",
+    "var(--chart-5)",
+    "var(--muted-foreground)",
+  ];
+
+  const data = chart.data;
+  const chartConfig: UiChartConfig = {
+    value: {
+      label: "Amount",
+      color: "var(--foreground)",
+    },
+  };
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  const renderActiveShape = (props: any) => {
+    const {
+      cx,
+      cy,
+      innerRadius,
+      outerRadius,
+      startAngle,
+      endAngle,
+      fill,
+    } = props;
+    return (
+      <g>
+        <Sector
+          cx={cx}
+          cy={cy}
+          innerRadius={innerRadius}
+          outerRadius={outerRadius + 4}
+          startAngle={startAngle}
+          endAngle={endAngle}
+          fill={fill}
+        />
+      </g>
+    );
+  };
+
+  return (
+    <div className="mt-4 mb-4 rounded-xl border bg-card/80 backdrop-blur-sm p-3.5">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wide">
+          Category overview
+        </p>
+      </div>
+      <div className="h-56">
+        <ChartContainer config={chartConfig} className="w-full h-full">
+          {isPie ? (
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={58}
+                outerRadius={82}
+                paddingAngle={3}
+                stroke="var(--background)"
+                strokeWidth={2}
+                activeIndex={activeIndex ?? undefined}
+                activeShape={renderActiveShape}
+                onMouseEnter={(_, idx) => setActiveIndex(idx)}
+                onMouseLeave={() => setActiveIndex(null)}
+              >
+                {data.map((entry, index) => {
+                  const isActive = index === activeIndex;
+                  return (
+                    <Cell
+                      key={`cell-${entry.name}-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                      fillOpacity={isActive || activeIndex === null ? 1 : 0.35}
+                    />
+                  );
+                })}
+              </Pie>
+              <ChartTooltip content={<ChartTooltipContent />} />
+            </PieChart>
+          ) : (
+            <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid
+                stroke="color-mix(in srgb, var(--muted-foreground) 12%, transparent)"
+                vertical={false}
+                strokeDasharray="3 3"
+              />
+              <XAxis
+                dataKey="name"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={4}
+                tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar
+                dataKey="value"
+                radius={[4, 4, 2, 2]}
+                maxBarSize={40}
+              >
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`bar-${entry.name}-${index}`}
+                    fill={COLORS[index % COLORS.length]}
+                    fillOpacity={0.75}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          )}
+        </ChartContainer>
+      </div>
+      {isPie && (
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          {data.map((item, idx) => {
+            const isActive = idx === activeIndex;
+            return (
+              <button
+                key={item.name}
+                type="button"
+                onMouseEnter={() => setActiveIndex(idx)}
+                onMouseLeave={() => setActiveIndex(null)}
+                className={cn(
+                  "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
+                  isActive ? "bg-muted/80 text-foreground" : "bg-transparent text-muted-foreground"
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="h-2.5 w-2.5 rounded-sm"
+                    style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                  />
+                  <span className="truncate capitalize">{item.name}</span>
+                </div>
+                <span className="tabular-nums">
+                  {typeof item.percentage === "number" ? `${item.percentage}%` : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -347,12 +531,10 @@ function InsightBox({ text }: { text: string }) {
 
 function ExpenseLoggedSection({
   loggedExpenses,
-  totalAmount,
   text,
   onUndo,
 }: {
   loggedExpenses: LoggedExpense[];
-  totalAmount?: number;
   text: string;
   onUndo?: (ids: string[]) => Promise<void>;
 }) {
@@ -480,7 +662,6 @@ function AssistantResponse({
       <div style={style}>
         <ExpenseLoggedSection
           loggedExpenses={logged}
-          totalAmount={response.totalAmount}
           text={response.text}
           onUndo={onUndoLoggedExpenses && ids.length > 0 ? (idsToUndo) => onUndoLoggedExpenses(idsToUndo) : undefined}
         />
@@ -493,6 +674,7 @@ function AssistantResponse({
     const hasExpenses = (response.expenses?.length ?? 0) > 0;
     const hasBreakdown = (response.categoryBreakdown?.length ?? 0) > 1;
     const primaryIsBreakdown = response.groupBy === "category";
+    const hasChart = !!response.chart && response.chart.data.length > 0;
 
     return (
       <div style={style}>
@@ -516,8 +698,12 @@ function AssistantResponse({
                 All Expenses
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="breakdown" className="mt-0">
-              <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
+            <TabsContent value="breakdown" className="mt-0 space-y-3">
+              {hasChart ? (
+                <CategoryChart chart={response.chart!} />
+              ) : (
+                <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
+              )}
               {response.totalAmount !== undefined && (
                 <div className="flex justify-between text-sm mt-3 px-0.5">
                   <span className="text-muted-foreground">{response.expenses!.length} transactions</span>
@@ -552,7 +738,11 @@ function AssistantResponse({
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
                   Category Breakdown
                 </p>
-                <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
+                {hasChart ? (
+                  <CategoryChart chart={response.chart!} />
+                ) : (
+                  <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
+                )}
               </div>
             )}
           </>
@@ -566,6 +756,8 @@ function AssistantResponse({
 
   // ── Insights ──
   if (response.intent === "insights") {
+    const hasChart = !!response.chart && response.chart.data.length > 0;
+
     return (
       <div style={style}>
         {response.title && (
@@ -579,7 +771,11 @@ function AssistantResponse({
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
               Spending Breakdown (90 days)
             </p>
-            <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
+            {hasChart ? (
+              <CategoryChart chart={response.chart!} />
+            ) : (
+              <CategoryBreakdownSection breakdown={response.categoryBreakdown!} />
+            )}
           </div>
         )}
         {response.text && <InsightBox text={response.text} />}
@@ -696,15 +892,15 @@ tfoot td{padding:10px 12px;font-weight:700;border-top:2px solid #e5e7eb}tfoot td
 footer{margin-top:32px;font-size:11px;color:#bbb;text-align:center}
 @media print{body{padding:20px}}
 </style></head><body>
-<header><h1>${title ?? "Expense Report"}</h1><span>Generated ${new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"})} · Spenny AI</span></header>
+<header><h1>${title ?? "Expense Report"}</h1><span>Generated ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })} · Spenny AI</span></header>
 <div class="meta">
-<div class="meta-card"><div class="label">Total Spent</div><div class="value">₹${total.toLocaleString("en-IN",{minimumFractionDigits:2})}</div></div>
+<div class="meta-card"><div class="label">Total Spent</div><div class="value">₹${total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div></div>
 <div class="meta-card"><div class="label">Transactions</div><div class="value">${expenses.length}</div></div>
 </div>
 <table>
 <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="amt">Amount</th></tr></thead>
 <tbody>${rows}</tbody>
-<tfoot><tr><td colspan="3">Total</td><td class="amt">₹${total.toLocaleString("en-IN",{minimumFractionDigits:2})}</td></tr></tfoot>
+<tfoot><tr><td colspan="3">Total</td><td class="amt">₹${total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td></tr></tfoot>
 </table>
 <footer>Exported from Spenny AI · ${dateStr}</footer>
 <script>window.onload=()=>window.print()<\/script>
@@ -1250,8 +1446,8 @@ export default function SagePage({
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/ogg";
+          ? "audio/webm"
+          : "audio/ogg";
 
       const recorder = new MediaRecorder(stream, { mimeType });
 
@@ -1607,98 +1803,98 @@ export default function SagePage({
                   e.currentTarget.style.animation = "";
                 }}
               >
-              {/* Inner = actual card background */}
-              <div className="relative bg-background rounded-[calc(1rem-1px)] focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask about your spending, log an expense, or get insights…"
-                  rows={3}
-                  className="w-full px-5 pt-4 pb-16 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/50 resize-none text-sm leading-relaxed"
-                />
-                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                  {/* Left: attach + mic */}
-                  <div className="flex items-center gap-1">
-                    {/* Attach menu */}
-                    <div className="relative" ref={attachMenuRef}>
-                      <button
-                        type="button"
-                        onClick={() => setShowAttachMenu((v) => !v)}
-                        className={cn(
-                          "w-8 h-8 flex items-center justify-center rounded-full transition-colors",
-                          showAttachMenu
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted"
+                {/* Inner = actual card background */}
+                <div className="relative bg-background rounded-[calc(1rem-1px)] focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask about your spending, log an expense, or get insights…"
+                    rows={3}
+                    className="w-full px-5 pt-4 pb-16 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/50 resize-none text-sm leading-relaxed"
+                  />
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+                    {/* Left: attach + mic */}
+                    <div className="flex items-center gap-1">
+                      {/* Attach menu */}
+                      <div className="relative" ref={attachMenuRef}>
+                        <button
+                          type="button"
+                          onClick={() => setShowAttachMenu((v) => !v)}
+                          className={cn(
+                            "w-8 h-8 flex items-center justify-center rounded-full transition-colors",
+                            showAttachMenu
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted"
+                          )}
+                          title="Attach receipt"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                        {showAttachMenu && (
+                          <div className="absolute bottom-9 left-0 bg-popover border rounded-xl shadow-lg py-1 min-w-[180px] z-50 sage-attach-menu">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                fileInputRef.current?.click();
+                                setShowAttachMenu(false);
+                              }}
+                              className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors text-left rounded-lg"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                                <LucideImage className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-foreground text-xs">Receipt / Screenshot</div>
+                                <div className="text-[10px] text-muted-foreground">JPG, PNG, WebP</div>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              disabled
+                              className="flex items-center gap-2.5 w-full px-3 py-2 text-xs opacity-45 cursor-not-allowed text-left rounded-lg"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                                <FileText className="h-3.5 w-3.5 text-orange-500 dark:text-orange-400" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-foreground text-xs">PDF Receipt</div>
+                                <div className="text-[10px] text-muted-foreground">Coming soon</div>
+                              </div>
+                            </button>
+                          </div>
                         )}
-                        title="Attach receipt"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                      {showAttachMenu && (
-                        <div className="absolute bottom-9 left-0 bg-popover border rounded-xl shadow-lg py-1 min-w-[180px] z-50 sage-attach-menu">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              fileInputRef.current?.click();
-                              setShowAttachMenu(false);
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs hover:bg-muted transition-colors text-left rounded-lg"
-                          >
-                            <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
-                              <LucideImage className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground text-xs">Receipt / Screenshot</div>
-                              <div className="text-[10px] text-muted-foreground">JPG, PNG, WebP</div>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            disabled
-                            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs opacity-45 cursor-not-allowed text-left rounded-lg"
-                          >
-                            <div className="w-6 h-6 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
-                              <FileText className="h-3.5 w-3.5 text-orange-500 dark:text-orange-400" />
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground text-xs">PDF Receipt</div>
-                              <div className="text-[10px] text-muted-foreground">Coming soon</div>
-                            </div>
-                          </button>
-                        </div>
+                      </div>
+
+                      {/* Mic — switches to chat mode then starts recording */}
+                      {!input.trim() && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setWelcomeLeaving(true);
+                            await new Promise((r) => setTimeout(r, 260));
+                            setChatMode(true);
+                            setWelcomeLeaving(false);
+                            setTimeout(() => startRecording(), 80);
+                          }}
+                          className="w-8 h-8 flex items-center justify-center rounded-full text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted transition-colors"
+                          title="Send voice message"
+                        >
+                          <Mic className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
 
-                    {/* Mic — switches to chat mode then starts recording */}
-                    {!input.trim() && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setWelcomeLeaving(true);
-                          await new Promise((r) => setTimeout(r, 260));
-                          setChatMode(true);
-                          setWelcomeLeaving(false);
-                          setTimeout(() => startRecording(), 80);
-                        }}
-                        className="w-8 h-8 flex items-center justify-center rounded-full text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted transition-colors"
-                        title="Send voice message"
-                      >
-                        <Mic className="h-4 w-4" />
-                      </button>
-                    )}
+                    {/* Right: send */}
+                    <button
+                      type="submit"
+                      disabled={!input.trim()}
+                      className="w-8 h-8 rounded-full bg-primary hover:bg-primary/90 flex items-center justify-center text-primary-foreground disabled:opacity-30 transition-all active:scale-95"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </button>
                   </div>
-
-                  {/* Right: send */}
-                  <button
-                    type="submit"
-                    disabled={!input.trim()}
-                    className="w-8 h-8 rounded-full bg-primary hover:bg-primary/90 flex items-center justify-center text-primary-foreground disabled:opacity-30 transition-all active:scale-95"
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>{/* inner card */}
+                </div>{/* inner card */}
               </div>{/* glow border wrapper */}
             </form>
 

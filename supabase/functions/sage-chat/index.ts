@@ -42,6 +42,15 @@ interface QueryFilters {
   search_description: string | null;
 }
 
+type ChartKind = "category_pie" | "category_bar";
+
+interface ChartConfig {
+  kind: ChartKind;
+  xKey: string;
+  yKey: string;
+  data: { name: string; value: number; percentage?: number }[];
+}
+
 // ── Groq helpers ─────────────────────────────────────────────────────────────
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -442,6 +451,20 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
         ? `${parts.join(" · ")} expenses`
         : "Your expenses";
 
+      const chart: ChartConfig | null =
+        categoryBreakdown.length > 1
+          ? {
+              kind: categoryBreakdown.length <= 4 ? "category_bar" : "category_pie",
+              xKey: "name",
+              yKey: "value",
+              data: categoryBreakdown.map((c) => ({
+                name: c.category,
+                value: c.total,
+                percentage: c.percentage,
+              })),
+            }
+          : null;
+
       return jsonResponse({
         intent: "query",
         title,
@@ -461,6 +484,7 @@ Plain text only, no markdown, no bullet points, friendly tone.`,
           endDate: filters.end_date,
           category: filters.category,
         },
+        chart,
       });
     }
 
@@ -563,6 +587,20 @@ Plain text only, no markdown, no asterisks, no bullet points.`,
         groqKey, 0.8, 300
       );
 
+      const chart: ChartConfig | null =
+        catBreakdown.length > 1
+          ? {
+              kind: catBreakdown.length <= 4 ? "category_bar" : "category_pie",
+              xKey: "name",
+              yKey: "value",
+              data: catBreakdown.map((c) => ({
+                name: c.category,
+                value: c.total,
+                percentage: c.percentage,
+              })),
+            }
+          : null;
+
       return jsonResponse({
         intent: "insights",
         title: "Spending Insights",
@@ -570,6 +608,7 @@ Plain text only, no markdown, no asterisks, no bullet points.`,
         metrics,
         categoryBreakdown: catBreakdown,
         totalAmount: totalThis,
+        chart,
       });
     }
 
