@@ -1,22 +1,26 @@
 "use client";
 
 import {
-  ResponsiveContainer,
   XAxis,
   YAxis,
-  Tooltip,
   Legend,
   PieChart as RechartsPieChart,
   Pie,
   Cell,
   BarChart,
   Bar,
+  PieChart,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useTheme } from "@/components/theme-provider";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
 const COLORS = [
   "#0088FE",
@@ -26,45 +30,6 @@ const COLORS = [
   "#AF19FF",
   "#FF1919",
 ];
-
-interface TooltipPayload {
-  name: string;
-  value: number;
-}
-
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
-}
-
-const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="p-2 bg-background border border-border rounded-lg shadow-lg">
-        <p className="label font-bold">{`${label || payload[0].name}`}</p>
-        <p className="intro text-primary">{`₹${payload[0].value.toFixed(
-          2
-        )}`}</p>
-      </div>
-    );
-  }
-  return null;
-};
-
-const CustomBarTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="p-2 bg-background border border-border rounded-lg shadow-lg">
-        <p className="label font-bold">{`${label}`}</p>
-        <p className="intro text-primary">{`Amount: ₹${payload[0].value.toFixed(
-          2
-        )}`}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 interface Expense {
   amount: number;
@@ -80,8 +45,6 @@ export function AnalyticsPage({
   expenses: Expense[];
   isLoading: boolean;
 }) {
-  const { theme } = useTheme();
-  const tickColor = theme === "dark" ? "#FFFFFF" : "#000000";
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -149,6 +112,20 @@ export function AnalyticsPage({
   const limitedBarChartData = isMobile
     ? expenseDataForBarChart.slice(-6)
     : expenseDataForBarChart;
+
+  const pieChartConfig = {
+    value: {
+      label: "Amount",
+      color: "var(--chart-1)",
+    },
+  } satisfies ChartConfig;
+
+  const barChartConfig = {
+    amount: {
+      label: "Amount",
+      color: "var(--chart-1)",
+    },
+  } satisfies ChartConfig;
 
   return (
     <div>
@@ -259,8 +236,11 @@ export function AnalyticsPage({
                 <CardTitle>Expenses by Category</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <RechartsPieChart>
+                <ChartContainer
+                  config={pieChartConfig}
+                  className="aspect-auto h-[300px] w-full"
+                >
+                  <PieChart>
                     <Pie
                       data={expenseDataForPieChart}
                       cx="50%"
@@ -269,7 +249,6 @@ export function AnalyticsPage({
                       outerRadius={100}
                       innerRadius={60}
                       paddingAngle={5}
-                      fill="#8884d8"
                       dataKey="value"
                       nameKey="name"
                       isAnimationActive={true}
@@ -282,10 +261,10 @@ export function AnalyticsPage({
                         />
                       ))}
                     </Pie>
-                    <Tooltip content={<CustomTooltip />} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
                     <Legend iconType="circle" />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
+                  </PieChart>
+                </ChartContainer>
               </CardContent>
             </Card>
             <Card>
@@ -293,7 +272,10 @@ export function AnalyticsPage({
                 <CardTitle>Monthly Spending Trend</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={isMobile ? 200 : 300}>
+                <ChartContainer
+                  config={barChartConfig}
+                  className={isMobile ? "aspect-auto h-[200px] w-full" : "aspect-auto h-[300px] w-full"}
+                >
                   <BarChart
                     data={limitedBarChartData}
                     margin={
@@ -302,41 +284,20 @@ export function AnalyticsPage({
                         : { top: 16, right: 24, left: 12, bottom: 5 }
                     }
                   >
-                    <defs>
-                      <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
-                        <stop
-                          offset="5%"
-                          stopColor="#8884d8"
-                          stopOpacity={0.8}
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis tickLine={false} axisLine={false} className="text-[11px]" />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                      {limitedBarChartData.map((_entry, index) => (
+                        <Cell
+                          key={`bar-cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                          fillOpacity={0.8}
                         />
-                        <stop
-                          offset="95%"
-                          stopColor="#8884d8"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="month"
-                      tick={{ fill: tickColor }}
-                      tickLine={{ stroke: tickColor }}
-                    />
-                    <YAxis
-                      tick={{ fill: tickColor }}
-                      tickLine={{ stroke: tickColor }}
-                      className="text-[11px]"
-                    />
-                    <Tooltip
-                      content={<CustomBarTooltip />}
-                      cursor={{ fill: "hsla(var(--muted), 0.5)" }}
-                    />
-                    <Bar
-                      dataKey="amount"
-                      fill="url(#colorUv)"
-                      radius={[4, 4, 0, 0]}
-                    />
+                      ))}
+                    </Bar>
                   </BarChart>
-                </ResponsiveContainer>
+                </ChartContainer>
               </CardContent>
             </Card>
           </div>
