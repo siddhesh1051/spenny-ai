@@ -66,6 +66,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@spenny/ui-renderer": path.resolve(__dirname, "../packages/ui-renderer/src"),
     },
   },
   server: {
