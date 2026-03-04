@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  Home,
   BarChart2,
   Settings,
   LogOut,
@@ -11,7 +10,11 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
+import { useTheme } from "@/components/theme-provider";
 import { supabase } from "@/lib/supabase";
 import { Button } from "./ui/button";
 import {
@@ -92,6 +95,7 @@ export function Sidebar({
     await supabase.auth.signOut();
   };
 
+  const { theme, setTheme } = useTheme();
   const userName = user?.user_metadata?.full_name || user?.email;
 
   const handleLinkClick = () => {
@@ -148,8 +152,8 @@ export function Sidebar({
           <NavItem
             to="/"
             end
-            icon={Home}
-            label="Home"
+            icon={Sparkles}
+            label="Sage"
             isCollapsed={isCollapsed}
             onLinkClick={handleLinkClick}
           />
@@ -196,18 +200,6 @@ export function Sidebar({
           )}
 
           <NavItem
-            to="/sage"
-            icon={Sparkles}
-            label="Sage"
-            isCollapsed={isCollapsed}
-            onLinkClick={handleLinkClick}
-            badge={
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-green-300 text-green-900 dark:bg-green-600/30 dark:text-green-700">
-                New
-              </span>
-            }
-          />
-          <NavItem
             to="/settings"
             icon={Settings}
             label="Settings"
@@ -239,6 +231,54 @@ export function Sidebar({
             )}
           </button>
         </div>
+
+        {/* Theme toggle */}
+        {isCollapsed ? (
+          <div className="flex justify-center px-2 py-1">
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "system" : "dark")}
+              title={`Theme: ${theme}`}
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150"
+            >
+              {theme === "dark" ? (
+                <Moon className="h-[18px] w-[18px]" />
+              ) : theme === "light" ? (
+                <Sun className="h-[18px] w-[18px]" />
+              ) : (
+                <Monitor className="h-[18px] w-[18px]" />
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="px-4 py-1">
+            <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-muted transition-colors duration-150">
+              <span className="text-sm font-medium text-muted-foreground">Theme</span>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setTheme("light")}
+                  title="Light"
+                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 ${theme === "light" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
+                >
+                  <Sun className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setTheme("system")}
+                  title="System"
+                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 ${theme === "system" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
+                >
+                  <Monitor className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setTheme("dark")}
+                  title="Dark"
+                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 ${theme === "dark" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
+                >
+                  <Moon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* User profile */}
         <div className={`pb-3 ${isCollapsed ? "flex justify-center px-0" : "px-4"}`}>

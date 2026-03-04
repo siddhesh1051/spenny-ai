@@ -28,7 +28,6 @@ import { AllTransactionsPage } from "./pages/AllTransactionsPage";
 import SettingsPage from "./pages/SettingsPage";
 import WhatsAppIntegrationPage from "./pages/WhatsAppIntegrationPage";
 import { Sidebar } from "./components/sidebar";
-import { ModeToggle } from "./components/mode-toggle";
 import { Button } from "./components/ui/button";
 import { X, Menu } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
@@ -1260,21 +1259,17 @@ Please extract all expenses from: '${text}'`,
           isCollapsed={isSidebarCollapsed}
           setIsCollapsed={handleSetCollapsed}
         />
-        <main className={`flex-1 overflow-y-auto min-w-0 ${location.pathname === "/sage" ? "flex flex-col" : "p-4 md:p-8"}`}>
-          {location.pathname === "/sage" ? (
-            /* Sage: slim bar — hamburger on mobile + mode toggle, no title */
-            <div className="flex justify-between items-center px-3 py-2 shrink-0">
+        <main className={`flex-1 overflow-y-auto min-w-0 ${location.pathname === "/" ? "flex flex-col" : "p-4 md:p-8"}`}>
+          {location.pathname === "/" ? (
+            /* Sage: slim bar — hamburger on mobile only, no title */
+            <div className="flex items-center px-3 py-2 shrink-0 md:hidden">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden"
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              {/* spacer so ModeToggle stays right even without the burger on desktop */}
-              <span className="hidden md:block" />
-              <ModeToggle />
             </div>
           ) : (
             <div className="flex justify-between items-center mb-4">
@@ -1289,7 +1284,6 @@ Please extract all expenses from: '${text}'`,
                 </Button>
                 <h1 className="text-lg md:text-2xl font-bold">{pageTitle}</h1>
               </div>
-              <ModeToggle />
             </div>
           )}
           <Toaster />
@@ -1302,8 +1296,19 @@ Please extract all expenses from: '${text}'`,
             </div>
           )}
           <Routes>
+            {/* Sage is the main page */}
             <Route
               path="/"
+              element={
+                <SagePage
+                  onSend={() => handleSetCollapsed(true)}
+                  deleteExpense={deleteExpense}
+                />
+              }
+            />
+            {/* Old home kept at /home (deprecated) */}
+            <Route
+              path="/home"
               element={
                 <HomePage
                   isRecording={isRecording}
@@ -1342,17 +1347,9 @@ Please extract all expenses from: '${text}'`,
             <Route path="/whatsapp-integration" element={<WhatsAppIntegrationPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
-            {/* MCP Server route protected until feature is enabled */}
+            {/* /sage and /mcp-server redirect to root */}
+            <Route path="/sage" element={<Navigate to="/" replace />} />
             <Route path="/mcp-server" element={<Navigate to="/" replace />} />
-            <Route
-              path="/sage"
-              element={
-                <SagePage
-                  onSend={() => handleSetCollapsed(true)}
-                  deleteExpense={deleteExpense}
-                />
-              }
-            />
             <Route
               path="/share-target"
               element={
