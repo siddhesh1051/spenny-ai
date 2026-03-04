@@ -26,17 +26,17 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@spenny/ui-renderer": ["../packages/ui-renderer/src/index.ts"],
-      "@spenny/ui-renderer/*": ["../packages/ui-renderer/src/*"]
+      "domino-ui": ["../packages/domino-ui/src/index.ts"],
+      "domino-ui/*": ["../packages/domino-ui/src/*"]
     }
   },
-  "include": ["src", "../packages/ui-renderer/src"],
+  "include": ["src", "../packages/domino-ui/src"],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/**/*.spec.ts",
     "src/**/*.spec.tsx",
     "src/test",
-    "../packages/ui-renderer/node_modules"
+    "../packages/domino-ui/node_modules"
   ]
 }

@@ -1,5 +1,5 @@
-// Spenny-specific types. Generic UI node types live in @spenny/ui-renderer.
-import type { UiResponse } from "@spenny/ui-renderer";
+// Spenny-specific types. Generic UI node types live in domino-ui.
+import type { UiResponse } from "domino-ui";
 
 export type Intent = "query" | "expense" | "insights" | "conversation";
 

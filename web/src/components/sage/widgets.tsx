@@ -7,8 +7,8 @@ import { Skeleton } from "../ui/Skeleton";
 import { CATEGORY_EMOJI, CATEGORY_STYLES, LOADING_STEPS } from "@/constants";
 import { formatDuration } from "@/utils/sage";
 import { createPortal } from "react-dom";
-import { UiRenderer } from "@spenny/ui-renderer";
-import type { UiLayout, UiNode, UiTableRow, UiCollectionItem } from "@spenny/ui-renderer";
+import { UiRenderer } from "domino-ui";
+import type { UiLayout, UiNode, UiTableRow, UiCollectionItem } from "domino-ui";
 
 
 // If Tip is only used here, define it locally instead of importing
