@@ -4,7 +4,6 @@ import {
   XAxis,
   YAxis,
   Legend,
-  PieChart as RechartsPieChart,
   Pie,
   Cell,
   BarChart,

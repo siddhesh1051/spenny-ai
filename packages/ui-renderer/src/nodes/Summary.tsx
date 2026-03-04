@@ -1,4 +1,3 @@
-import React from "react";
 import type { UiSummaryNode } from "../types";
 
 export function Summary({ node }: { node: UiSummaryNode }) {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   PieChart, Pie, Cell,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Sector,
@@ -37,14 +37,14 @@ function ChartTip({ active, payload }: { active?: boolean; payload?: { name: str
   );
 }
 
-function renderActiveShape(props: Record<string, unknown>) {
+function renderActiveShape(props: unknown) {
   const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props as {
-    cx: number; cy: number; innerRadius: number; outerRadius: number;
-    startAngle: number; endAngle: number; fill: string;
+    cx?: number; cy?: number; innerRadius?: number; outerRadius?: number;
+    startAngle?: number; endAngle?: number; fill?: string;
   };
   return (
     <g>
-      <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 4}
+      <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={(outerRadius ?? 0) + 4}
         startAngle={startAngle} endAngle={endAngle} fill={fill} />
     </g>
   );
@@ -80,9 +80,9 @@ export function Visual({ node }: { node: UiVisualNode }) {
                 paddingAngle={3}
                 stroke="var(--background)"
                 strokeWidth={2}
-                activeIndex={activeIndex ?? undefined}
+                {...(activeIndex != null ? { activeIndex } : {})}
                 activeShape={renderActiveShape}
-                onMouseEnter={(_, idx) => setActiveIndex(idx)}
+                onMouseEnter={(_: unknown, idx: number) => setActiveIndex(idx)}
                 onMouseLeave={() => setActiveIndex(null)}
               >
                 {data.map((entry, index) => (
