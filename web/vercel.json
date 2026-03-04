@@ -1,6 +1,6 @@
 {
   "installCommand": "npm pkg set dependencies.domino-ui='latest' && npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build:prod",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" },
     { "source": "/sw.js", "destination": "/sw.js" }
