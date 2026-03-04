@@ -1,98 +1,180 @@
 # Spenny AI
 
-**Spenny AI** is an AI-powered expense tracker that lets you log expenses by voice, text, images, PDF bank statements, and WhatsApp. It uses Groq’s fast LLMs to extract structured expense data and stores everything in Supabase with a modern React + TypeScript frontend.
+**Spenny AI** is an AI-powered expense tracker built around a conversational interface called **Sage**. Log expenses by voice, text, receipt photo, or WhatsApp. Ask natural language questions about your spending. Get rich, dynamic answers — charts, tables, metric cards, and insights — all composed in real time by the AI.
 
 ---
 
 ## Table of Contents
 
+- [What Makes Spenny Different](#what-makes-spenny-different)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
-- [Demo Questions & Example Inputs](#demo-questions--example-inputs)
+- [Generative UI & the `@spenny/ui-renderer` SDK](#generative-ui--the-spennyui-renderer-sdk)
+- [Demo Prompts](#demo-prompts)
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
-- [Testing](#testing)
 - [WhatsApp Integration (Optional)](#whatsapp-integration-optional)
-- [PWA](#pwa--share-target)
+- [PWA & Share Target](#pwa--share-target)
 - [License](#license)
+
+---
+
+## What Makes Spenny Different
+
+Most expense trackers are forms. Spenny is a conversation.
+
+**Sage** is the AI assistant at the center of the experience. You talk to it like a person — and it responds not with plain text, but with structured, interactive UI generated on the fly. The backend decides what to show: a donut chart, a table of transactions, metric summary cards, or a highlighted insight callout. The frontend just renders whatever JSON the AI returns.
+
+This is **Generative UI** — the AI is the layout engine.
 
 ---
 
 ## Features
 
-### Core
+### Sage — AI Chat Interface (Main Page)
 
-- **Voice input** – Click the mic, speak your expenses (e.g. “spent 50 on coffee and 150 for groceries”). Speech is transcribed and parsed into amount, category, and description. Supports Chrome, Edge, Safari (Web Speech API).
-- **Text input** – Type or paste a sentence; the AI extracts one or more expenses and shows them for confirmation before saving.
-- **Image receipts** – Upload a photo of a receipt or order history; the AI extracts line items and categories (Groq Vision).
-- **PDF bank statements** – Upload a bank statement PDF; the app extracts debit transactions, skips credits/transfers, and imports them with category and date (Groq Vision).
-- **All transactions** – View, search, filter by category and date range, edit, delete, and export to CSV or PDF.
-- **Analytics** – Pie and bar charts by category, spending over time, and progress toward category totals.
-- **Dark/Light mode** – Theme toggle with persisted preference.
+- **Natural language expense logging** — "Spent 200 on dinner and 50 for Uber." Sage extracts, categorises, and saves. You see a confirmation list with one-tap undo per item.
+- **Spending queries** — "How much did I spend on food last week?" Returns a live query with chart, summary cards, table of transactions, and a Sage Insight callout.
+- **Monthly insights** — "Show me my spending insights." Returns month-over-month comparison metrics, category breakdown chart, and personalised observations.
+- **Receipt scanning** — Upload a receipt photo. Groq Vision extracts line items; Sage confirms them with the same undo-able collection UI.
+- **Voice input** — Tap the mic, speak naturally. Transcribed via Whisper and sent through the same Sage pipeline.
+- **Conversational fallback** — If Sage can't extract an expense or find data, it responds conversationally with a helpful message.
+- **Dynamic layout** — Every Sage response is a different arrangement of components decided by the AI: headings, metric cards, charts (donut or bar), tables, item lists, insight callouts — composed per query.
+
+### Transactions & Analytics
+
+- **All Transactions** — View, search, filter by category and date, edit, delete, export to CSV or PDF.
+- **Analytics** — Category pie/bar charts, spending over time, category totals.
 
 ### Auth & Profile
 
-- **Email/password** – Sign up and sign in via Supabase Auth.
-- **Google sign-in** – OAuth with automatic profile creation.
-- **Profile & API key** – Settings page: update display name and store your **Groq API key** (used for all AI features). Optional env fallback: `VITE_GROQ_API_KEY`.
+- **Email/password** and **Google OAuth** via Supabase Auth.
+- **Settings** — Update display name, store your Groq API key (used for all AI features; falls back to server-side key if not set).
 
 ### Integrations
 
-- **WhatsApp** – Link your WhatsApp number (OTP verification). Send text or voice messages to log expenses; ask questions (“How much did I spend last month?”); request exports (“Export last 30 days as CSV”) and receive the file in chat. Uses Supabase Edge Functions: `whatsapp-webhook`, `send-whatsapp-otp`, `verify-whatsapp-otp`.
-- **API Keys** – Create and manage API keys for secure access (e.g. MCP or other integrations). Keys are stored in Supabase and can be revoked.
-- **PWA** – Installable app with offline-ready shell and share target for images.
-
-### Data & Categories
-
-- **Categories:** `food`, `travel`, `groceries`, `entertainment`, `utilities`, `rent`, `other`.
-- **Structured fields:** amount, category, description, date (with optional edit before save for voice/text).
+- **WhatsApp** — Link your number (OTP verification). Message the bot to log expenses, ask questions, or request CSV/PDF exports directly in chat.
+- **API Keys** — Create and manage programmatic API keys (e.g. for MCP integrations).
+- **PWA** — Installable, with share target for images.
 
 ---
 
 ## Tech Stack
 
-| Layer        | Technology |
-|-------------|------------|
+| Layer | Technology |
+|---|---|
 | **Frontend** | React 19, TypeScript, Vite 6, React Router 7 |
-| **Styling**  | Tailwind CSS 4, Radix UI (Dialog, Tabs, Dropdown, etc.), Lucide icons |
-| **State / Data** | React state, Supabase JS client |
-| **Backend / DB** | Supabase (Auth, Postgres, Storage, Edge Functions) |
-| **AI**       | Groq (llama-3.1-8b-instant for text, llama-3.2-11b-vision-preview for images/PDFs, Whisper for audio) |
-| **Charts**   | Recharts |
+| **Styling** | Tailwind CSS 4, shadcn/ui (Radix UI primitives), Lucide icons |
+| **Backend / DB** | Supabase (Auth, Postgres, Edge Functions) |
+| **AI — text** | Groq `llama-3.3-70b-versatile` — intent classification, expense extraction, query building, UI JSON generation |
+| **AI — vision** | Groq `meta-llama/llama-4-scout-17b-16e-instruct` — receipt and PDF extraction |
+| **AI — audio** | OpenAI Whisper (via Supabase Edge Function `transcribe-audio`) |
+| **Charts** | Recharts (inside `@spenny/ui-renderer`) |
+| **Generative UI** | `@spenny/ui-renderer` — internal SDK (see below) |
 | **PDF export** | jsPDF + jspdf-autotable |
-| **PWA**      | vite-plugin-pwa (manifest, service worker) |
-| **Testing**  | Vitest, React Testing Library, Playwright (E2E) |
+| **PWA** | vite-plugin-pwa |
 
 ---
 
-## Demo Questions & Example Inputs
+## Generative UI & the `@spenny/ui-renderer` SDK
 
-Use these to try the product (voice, text box, or WhatsApp).
+### The Problem
 
-### Logging expenses (voice or text)
+Early versions of Spenny had hardcoded response layouts: every expense log looked the same, every spending query looked the same. The UI was driven by intent type, not by what the data actually needed.
 
-- *“Spent 10 on coffee and 150 for groceries.”*
-- *“Bought lunch for 25 dollars, paid 50 for gas, and spent 15 on parking.”*
-- *“Paid 100 for electricity bill and 80 for internet.”*
-- *“Rent 15000, groceries 3200, and 500 on entertainment.”*
+### The Solution — AI as Layout Engine
 
-### Categories (what the AI maps)
+The Sage backend (`sage-chat` Edge Function) no longer returns fixed fields. It returns a `uiResponse` JSON object that describes a **tree of UI nodes**. The AI decides which nodes to include, in what order, and with what content — based on the question and the data.
 
-- **food** – restaurants, cafes, fast food, dining out  
-- **groceries** – supermarket, household items  
-- **travel** – fuel, parking, transport, flights, hotels  
-- **entertainment** – movies, games, hobbies, concerts  
-- **utilities** – electricity, water, gas, internet, phone  
-- **rent** – housing rent, accommodation  
-- **other** – everything else  
+A response for "How much did I spend this month?" might look like:
+
+```json
+{
+  "layout": {
+    "kind": "column",
+    "children": [
+      { "kind": "block", "style": "subheading", "text": "March 2026" },
+      {
+        "kind": "row",
+        "children": [
+          { "kind": "summary", "heading": "Total", "primary": "₹12,400", "sentiment": "neutral" },
+          { "kind": "summary", "heading": "Transactions", "primary": "34", "sentiment": "neutral" }
+        ]
+      },
+      { "kind": "visual", "variant": "donut", "points": [...] },
+      { "kind": "table", "rows": [...] },
+      { "kind": "block", "style": "insight", "text": "Food accounts for 62% of spending..." }
+    ]
+  }
+}
+```
+
+The frontend renders this tree — it never knows the intent, only the nodes.
+
+### The `@spenny/ui-renderer` Package
+
+To keep this rendering logic clean and reusable, it lives as a standalone internal package at `packages/ui-renderer` — exported as `@spenny/ui-renderer`.
+
+**Design goals:**
+- **Zero domain knowledge** — no concept of "expense" or "finance". Takes any valid `uiResponse` JSON and renders it.
+- **Zero web-app dependencies** — styled entirely with inline CSS and CSS variables (`var(--card)`, `var(--border)`, etc.) so it works in any host app that defines a theme.
+- **AI-context-aware** — the Edge Function receives a `UI_COMPONENT_CATALOG` (a plain-text description of every available node type) so the Groq model knows exactly what it can produce.
+
+**Available node types:**
+
+| Node | Description |
+|---|---|
+| `column` | Vertical stack of children |
+| `row` | Horizontal grid of children |
+| `block` | Text block — `subheading`, `body`, or `insight` (green callout) |
+| `summary` | Metric card with heading, primary value, optional secondary and sentiment |
+| `visual` | Chart — `donut` (pie/donut) or `bars` (bar chart) via Recharts |
+| `table` | Scrollable data table with "Show more" for >10 rows |
+| `collection` | Confirmed item list (e.g. logged expenses) with per-item undo |
+
+**Usage in the web app:**
+
+```tsx
+import { UiRenderer } from "@spenny/ui-renderer";
+
+<UiRenderer
+  layout={response.uiResponse.layout}
+  callbacks={{ onUndo: handleUndo }}
+/>
+```
+
+The `collection` node's undo callback connects directly to the Supabase delete function — so users can one-tap remove any just-logged expense without leaving the chat.
+
+---
+
+## Demo Prompts
+
+Try these in Sage (text or voice):
+
+### Logging expenses
+- *"Spent 200 on dinner and 50 for Uber."*
+- *"Coffee 80, groceries 1200, electricity bill 900."*
+- *"Paid 15000 rent and 3000 for groceries."*
+
+### Spending queries
+- *"How much did I spend this month?"*
+- *"Show my food and travel expenses this week."*
+- *"What did I spend most on last month?"*
+- *"Show me all transactions above ₹500."*
+
+### Insights
+- *"Give me my spending insights."*
+- *"How does this month compare to last month?"*
+- *"What's my top spending category?"*
+
+### Receipt scanning
+Upload a photo of any receipt, payment screenshot, or bank SMS. Sage extracts and logs automatically.
 
 ### WhatsApp (after linking your number)
-
-- *“Spent 200 on dinner and 50 on cab.”* → Logs expenses.
-- *“How much did I spend last month?”* → Summary reply.
-- *“What are my top categories?”* → Category breakdown.
-- *“Export my expenses” / “Export last 30 days as CSV”* → Sends CSV (or PDF) in chat.
+- *"Spent 200 on dinner and 50 on cab."* → Logs expenses.
+- *"How much did I spend last month?"* → Summary reply.
+- *"Export last 30 days as CSV"* → Sends file in chat.
 
 ---
 
@@ -101,28 +183,21 @@ Use these to try the product (voice, text box, or WhatsApp).
 ### Prerequisites
 
 - Node.js 18+
-- npm or pnpm
+- npm
 - A [Supabase](https://supabase.com) project
-- A [Groq](https://console.groq.com) API key (for AI features)
+- A [Groq](https://console.groq.com) API key
 
 ### 1. Clone and install
 
 ```bash
 git clone <repo-url>
 cd spenny-ai
-```
 
-Install dependencies for each sub-package you want to run:
-
-```bash
 # Web app
 cd web && npm install
 
-# Mobile app (Expo)
-cd ../app && npm install
-
-# MCP server
-cd ../mcp-server && npm install
+# UI renderer SDK
+cd ../packages/ui-renderer && npm install
 ```
 
 ### 2. Environment
@@ -132,40 +207,33 @@ Create `web/.env`:
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-# Optional: default Groq key for all users (otherwise set per user in Settings)
-# VITE_GROQ_API_KEY=your-groq-api-key
 ```
-
-Create `app/.env` for the mobile app:
-
-```env
-EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-```
-
-Use your Supabase project URL and anon key from **Project → Settings → API**.
 
 ### 3. Supabase setup
 
 - Enable Email and (optional) Google auth in **Authentication → Providers**.
-- Create tables and RLS policies (e.g. `profiles`, `expenses`, `api_keys`, `whatsapp_export_state` if you use WhatsApp). Apply any migrations or SQL from the project if provided.
-- For WhatsApp: deploy Edge Functions and set secrets (see [WhatsApp Integration](#whatsapp-integration-optional)).
+- Create tables: `profiles`, `expenses`, `api_keys`. Apply RLS policies.
+- Deploy Edge Functions:
 
-### 4. Run the app
+```bash
+npx supabase functions deploy sage-chat --no-verify-jwt
+npx supabase functions deploy extract-receipt --no-verify-jwt
+npx supabase functions deploy transcribe-audio --no-verify-jwt
+```
 
-**Web:**
+- Set Edge Function secrets in Supabase dashboard:
+  - `GROQ_API_KEY`
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+
+### 4. Run
 
 ```bash
 cd web && npm run dev
 ```
 
-Open the URL shown (e.g. `http://localhost:5173`). Sign up, add your Groq API key in **Settings**, then try voice, text, or image/PDF on the home page.
-
-**Mobile (Expo):**
-
-```bash
-cd app && npx expo start
-```
+Open `http://localhost:5173`. Sign up, add your Groq API key in **Settings**, then start chatting with Sage.
 
 ---
 
@@ -174,19 +242,18 @@ cd app && npx expo start
 **Web (`web/.env`)**
 
 | Variable | Required | Description |
-|----------|----------|-------------|
+|---|---|---|
 | `VITE_SUPABASE_URL` | Yes | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
-| `VITE_GROQ_API_KEY` | No | Default Groq API key (users can override in Settings) |
 
-**Mobile (`app/.env`)**
+**Edge Functions (Supabase secrets)**
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
-
-For E2E tests, copy `web/.env.e2e.example` to `web/.env.e2e` and set `E2E_TEST_EMAIL` and `E2E_TEST_PASSWORD` for full-flow tests.
+| Variable | Description |
+|---|---|
+| `GROQ_API_KEY` | Server-side Groq key (fallback if user hasn't set their own) |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (for DB writes in Edge Functions) |
 
 ---
 
@@ -194,102 +261,70 @@ For E2E tests, copy `web/.env.e2e.example` to `web/.env.e2e` and set `E2E_TEST_E
 
 ```
 spenny-ai/
-├── web/                        # React + Vite web app (PWA)
-│   ├── src/
-│   │   ├── App.tsx             # Routes, auth, expense logic, Groq calls
-│   │   ├── main.tsx
-│   │   ├── lib/
-│   │   │   ├── supabase.ts     # Supabase client
-│   │   │   └── utils.ts
-│   │   ├── pages/
-│   │   │   ├── AuthPage.tsx              # Sign in / Sign up (email, Google)
-│   │   │   ├── HomePage.tsx              # Voice, text, image, PDF input
-│   │   │   ├── AllTransactionsPage.tsx   # List, filter, export CSV/PDF
-│   │   │   ├── AnalyticsPage.tsx         # Charts by category / time
-│   │   │   ├── SettingsPage.tsx          # Profile, Groq API key
-│   │   │   ├── ApiKeysPage.tsx           # API key management
-│   │   │   ├── McpServerPage.tsx         # MCP server setup guide
-│   │   │   ├── WhatsAppIntegrationPage.tsx  # Link WhatsApp (OTP)
-│   │   │   └── ShareTargetPage.tsx       # PWA share target handler
-│   │   └── components/
-│   │       ├── sidebar.tsx
-│   │       ├── ApiKeysManagement.tsx
-│   │       ├── PWAInstallPrompt.tsx
-│   │       ├── mode-toggle.tsx
-│   │       ├── theme-provider.tsx
-│   │       └── ui/             # Radix-based UI primitives (shadcn/ui)
-│   ├── e2e/                    # Playwright E2E tests
-│   ├── public/                 # PWA icons, manifest, service worker
-│   ├── .env                    # Web environment variables
-│   ├── vite.config.ts          # Vite + PWA plugin
-│   ├── playwright.config.ts
-│   └── package.json
-├── app/                        # React Native / Expo mobile app
-│   ├── screens/
-│   │   ├── AuthScreen.tsx
-│   │   ├── HomeScreen.tsx
-│   │   ├── TransactionsScreen.tsx
-│   │   ├── AnalyticsScreen.tsx
-│   │   ├── SettingsScreen.tsx
-│   │   └── WhatsAppScreen.tsx
-│   ├── components/
-│   │   ├── AnimatedTabBar.tsx
-│   │   ├── WhatsAppSection.tsx
-│   │   └── ui/                 # Mobile UI primitives
-│   ├── context/
-│   │   └── ThemeContext.tsx
-│   ├── lib/supabase.ts
-│   ├── App.tsx
-│   ├── .env                    # Mobile environment variables
-│   └── package.json
-├── mcp-server/                 # MCP server for AI integrations
-│   ├── index.js
-│   └── package.json
+├── packages/
+│   └── ui-renderer/               # @spenny/ui-renderer — Generative UI SDK
+│       └── src/
+│           ├── UiRenderer.tsx     # Root renderer component
+│           ├── renderNode.tsx     # Node type dispatch
+│           ├── types.ts           # UiNode, UiLayout, UiResponse types
+│           └── nodes/
+│               ├── Block.tsx      # Text blocks (subheading, body, insight)
+│               ├── Summary.tsx    # Metric cards
+│               ├── Visual.tsx     # Donut / bar charts (Recharts)
+│               ├── Table.tsx      # Data table with show more
+│               ├── Collection.tsx # Item list with per-item undo
+│               ├── Row.tsx        # Horizontal layout
+│               └── Column.tsx     # Vertical layout
+├── web/                           # React + Vite web app (PWA)
+│   └── src/
+│       ├── App.tsx                # Routes, auth, sidebar layout
+│       ├── pages/
+│       │   ├── SagePage.tsx       # Main page — Sage AI chat interface
+│       │   ├── AllTransactionsPage.tsx
+│       │   ├── AnalyticsPage.tsx
+│       │   ├── SettingsPage.tsx
+│       │   ├── ApiKeysPage.tsx
+│       │   ├── WhatsAppIntegrationPage.tsx
+│       │   ├── ShareTargetPage.tsx
+│       │   └── deprecated/
+│       │       └── HomePage.tsx   # Legacy home (voice/text/image input) — kept but not linked
+│       └── components/
+│           ├── sidebar.tsx        # Nav sidebar with theme toggle
+│           ├── sage/
+│           │   ├── widgets.tsx    # Chat UI components, AssistantResponse renderer
+│           │   └── types.ts       # Message, SageResponse, etc.
+│           └── ui/                # shadcn/ui primitives
 ├── supabase/
 │   └── functions/
-│       ├── whatsapp-webhook/   # Incoming WhatsApp: expense, query, export
-│       ├── send-whatsapp-otp/  # Send OTP for linking number
-│       └── verify-whatsapp-otp/ # Verify OTP and save number
-└── README.md
+│       ├── sage-chat/             # Main AI function — intent → uiResponse JSON
+│       ├── extract-receipt/       # Vision extraction → uiResponse JSON
+│       ├── transcribe-audio/      # Whisper transcription
+│       ├── whatsapp-webhook/      # WhatsApp bot
+│       ├── send-whatsapp-otp/
+│       └── verify-whatsapp-otp/
+├── app/                           # React Native / Expo mobile app
+└── mcp-server/                    # MCP server for AI tool integrations
 ```
-
----
-
-## Testing
-
-All test commands run from the `web/` directory:
-
-```bash
-cd web
-```
-
-- **Unit / component:** `npm run test` or `npm run test:run` (Vitest + React Testing Library).
-- **E2E (Playwright):**
-  - **Run all E2E (Chromium):** `npm run e2e`
-  - **With UI:** `npm run e2e:ui`
-  - **Headed (see browser):** `npm run e2e:headed`
-
-Auth-page E2E runs without extra config. Full flow (sign in → add expense → transactions) requires test credentials in `web/.env.e2e` (see `web/.env.e2e.example`). The app must use the same `VITE_SUPABASE_*` as your dev `web/.env` so it can reach your Supabase project.
 
 ---
 
 ## WhatsApp Integration (Optional)
 
-1. **Meta setup** – Create a Meta app, add WhatsApp product, get phone number ID and access token. Configure webhook URL to point to your Supabase function:  
+1. **Meta setup** — Create a Meta app, add WhatsApp product, get phone number ID and access token. Set webhook URL to:
    `https://<project-ref>.supabase.co/functions/v1/whatsapp-webhook`
-2. **Supabase secrets** – Set for the `whatsapp-webhook` (and OTP) functions:
-   - `WHATSAPP_VERIFY_TOKEN` (any string; same as in Meta webhook config)
-   - `WHATSAPP_TOKEN` – Meta WhatsApp API token
-   - `WHATSAPP_PHONE_NUMBER_ID` – WhatsApp Business phone number ID
-   - `GROQ_API_KEY` – Used in the webhook for parsing and answering
-3. **Deploy** – Deploy `whatsapp-webhook`, `send-whatsapp-otp`, and `verify-whatsapp-otp` Edge Functions.
-4. **App** – Users link their number in **WhatsApp Integration** via OTP; then they can message the bot to log expenses, ask questions, and request CSV/PDF exports.
+2. **Supabase secrets** for `whatsapp-webhook`:
+   - `WHATSAPP_VERIFY_TOKEN`
+   - `WHATSAPP_TOKEN`
+   - `WHATSAPP_PHONE_NUMBER_ID`
+   - `GROQ_API_KEY`
+3. **Deploy** `whatsapp-webhook`, `send-whatsapp-otp`, `verify-whatsapp-otp`.
+4. **App** — Users link their number in **WhatsApp Integration** via OTP.
 
 ---
 
 ## PWA & Share Target
 
-- The app is a PWA (Vite PWA plugin): installable, with a share target for **images**.
+The app is a PWA (via vite-plugin-pwa): installable on desktop and mobile. Supports the Web Share Target API — share a receipt photo from your camera roll directly to Spenny and it gets scanned automatically.
 
 ---
 
