@@ -61,31 +61,35 @@ function adaptLayoutForSdk(node: UiNode): UiNode {
       value: `₹${r.amount.toLocaleString("en-IN")}`,
       secondary: r.date
         ? new Date(r.date).toLocaleDateString("en-IN", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
         : undefined,
     }));
     return { kind: "table", variant: "records", rows: sdkRows };
   }
   if (node.kind === "collection") {
-    // Backend sends { id, description, category, amount }
-    // SDK expects { id?, label, badge?, value, icon? }
-    const adapted = (node as unknown as {
+    const raw = node as unknown as {
       kind: "collection";
       variant: "items";
       text: string;
-      items: LoggedExpense[];
+      items: (LoggedExpense | UiCollectionItem)[];
+    };
+    const sdkItems: UiCollectionItem[] = (raw.items ?? []).map((e) => {
+      // Already in SDK shape (extract-receipt sends label/badge/value directly)
+      if ("label" in e) return e as UiCollectionItem;
+      // Legacy shape from sage-chat: { id, description, category, amount }
+      const le = e as LoggedExpense;
+      return {
+        id: le.id,
+        label: le.description,
+        badge: le.category,
+        value: `₹${le.amount.toLocaleString("en-IN")}`,
+        icon: CATEGORY_EMOJI[le.category?.toLowerCase()] ?? "📦",
+      };
     });
-    const sdkItems: UiCollectionItem[] = (adapted.items ?? []).map((e) => ({
-      id: e.id,
-      label: e.description,
-      badge: e.category,
-      value: `₹${e.amount.toLocaleString("en-IN")}`,
-      icon: CATEGORY_EMOJI[e.category?.toLowerCase()] ?? "📦",
-    }));
-    return { kind: "collection", variant: "items", text: adapted.text ?? node.text, items: sdkItems };
+    return { kind: "collection", variant: "items", text: raw.text ?? node.text, items: sdkItems };
   }
   return node;
 }

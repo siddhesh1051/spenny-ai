@@ -1,6 +1,6 @@
 // Supabase Edge Function: extract-receipt
 // Uses Groq Vision (llama-4-scout) to extract transactions from a receipt / payment screenshot
-// Returns structured expense data + automatically saves to DB
+// Returns uiResponse in the same SDK structure as sage-chat (expense intent)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -33,6 +33,55 @@ const VALID_CATEGORIES = [
 ];
 
 const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const TEXT_MODEL = "llama-3.3-70b-versatile";
+
+function formatINR(n: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(n);
+}
+
+async function groqJSON<T>(prompt: string, key: string, temp = 0.7, tokens = 600): Promise<T | null> {
+  try {
+    const res = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: temp,
+        max_tokens: tokens,
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content ?? "";
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+const UI_COMPONENT_CATALOG = `
+## Available UI Components
+
+### Layout nodes
+{ "kind": "column", "children": [...] }
+{ "kind": "row", "children": [...] }
+
+### Content nodes
+{ "kind": "block", "style": "subheading"|"body"|"insight", "text": "..." }
+{ "kind": "collection", "text": "label", "items": [...] }
+
+## Composition rules
+- Always wrap everything in a "column" root
+- Optionally add a "block" subheading before the collection
+- Optionally add a brief "block" body or "insight" after (1 sentence max, encouraging)
+- Do NOT add charts, tables, or summary cards
+- Keep it minimal and celebratory
+`.trim();
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -186,9 +235,14 @@ Return ONLY a valid JSON array — no markdown, no explanation:
     console.error("[extract-receipt] JSON parse failed. Raw:", groqRaw.slice(0, 200));
     return json({
       intent: "conversation",
-      text: "I couldn't read the receipt clearly. Please try a clearer, well-lit photo.",
-      loggedExpenses: [],
-      totalAmount: 0,
+      uiResponse: {
+        layout: {
+          kind: "column",
+          children: [
+            { kind: "block", style: "body", text: "I couldn't read the receipt clearly. Please try a clearer, well-lit photo." },
+          ],
+        },
+      },
     });
   }
 
@@ -204,9 +258,15 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   if (!valid.length) {
     return json({
       intent: "conversation",
-      text: "No transactions found in that image. Make sure it's a receipt, payment confirmation, or bank SMS screenshot.",
-      loggedExpenses: [],
-      totalAmount: 0,
+      uiResponse: {
+        layout: {
+          kind: "column",
+          children: [
+            { kind: "block", style: "subheading", text: "No transactions found" },
+            { kind: "block", style: "body", text: "Make sure it's a receipt, payment confirmation, or bank SMS screenshot." },
+          ],
+        },
+      },
     });
   }
 
@@ -229,28 +289,67 @@ Return ONLY a valid JSON array — no markdown, no explanation:
     return json({ error: `Failed to save: ${insertErr.message}` }, 500);
   }
 
-  const total = (inserted ?? []).reduce(
-    (s: number, e: { amount: number }) => s + e.amount,
-    0
-  );
-  const count = inserted?.length ?? 0;
+  const rows = (inserted ?? []).map((e: {
+    id: string; description: string; category: string; amount: number;
+  }) => ({ id: e.id, description: e.description, category: e.category, amount: e.amount }));
+
+  const total = rows.reduce((s: number, e: { amount: number }) => s + e.amount, 0);
+  const count = rows.length;
 
   console.log(`[extract-receipt] Logged ${count} expenses, total ₹${total}`);
 
+  const collectionNode = {
+    kind: "collection",
+    variant: "items",
+    text: `${count} expense${count !== 1 ? "s" : ""} extracted from your receipt!`,
+    items: rows.map((r: { id: string; description: string; category: string; amount: number }) => ({
+      id: r.id,
+      label: r.description,
+      badge: r.category,
+      value: formatINR(r.amount),
+    })),
+  };
+
+  const expenseSummary = rows.map((r: { description: string; category: string; amount: number }) =>
+    `- ${r.description} (${r.category}): ${formatINR(r.amount)}`
+  ).join("\n");
+
+  const aiLayout = await groqJSON<{ layout: unknown }>(
+    `You are Spenny AI. The user just scanned a receipt and ${count} expense${count !== 1 ? "s were" : " was"} extracted, totalling ${formatINR(total)}.
+
+Extracted expenses:
+${expenseSummary}
+
+${UI_COMPONENT_CATALOG}
+
+Compose a concise confirmation UI. Rules:
+- MUST include this exact collection node as one of the children (do not modify it):
+${JSON.stringify(collectionNode)}
+- Optionally add a "block" subheading before the collection (e.g. "1 expense extracted")
+- Do NOT add a "block" with style "insight" — no Sage Insight for expense logging
+- Do NOT add charts, tables, or summary cards
+- Keep it minimal and celebratory
+- The collection node MUST be the last child
+
+Return ONLY valid JSON (no markdown):
+{ "layout": { "kind": "column", "children": [ ...nodes including the collection node ] } }`,
+    groqKey,
+    0.7,
+    600,
+  );
+
+  const fallbackUiResponse = {
+    layout: {
+      kind: "column",
+      children: [
+        { kind: "block", style: "subheading", text: `${count} expense${count !== 1 ? "s" : ""} logged` },
+        collectionNode,
+      ],
+    },
+  };
+
   return json({
     intent: "expense",
-    text: `${count} expense${count !== 1 ? "s" : ""} extracted from your receipt!`,
-    loggedExpenses: (inserted ?? []).map((e: {
-      id: string;
-      description: string;
-      category: string;
-      amount: number;
-    }) => ({
-      id: e.id,
-      description: e.description,
-      category: e.category,
-      amount: e.amount,
-    })),
-    totalAmount: total,
+    uiResponse: aiLayout ?? fallbackUiResponse,
   });
 });

@@ -29,7 +29,7 @@ function ChartTip({ active, payload }: { active?: boolean; payload?: { name: str
       color: "var(--popover-foreground)",
     }}>
       <div style={{ fontWeight: 600, textTransform: "capitalize", marginBottom: "2px" }}>{item.name}</div>
-      <div style={{ fontVariantNumeric: "tabular-nums" }}>{item.value.toLocaleString()}</div>
+      <div style={{ fontVariantNumeric: "tabular-nums" }}>{item.value?.toLocaleString() ?? ""}</div>
       {item.payload?.share != null && (
         <div style={{ color: "var(--muted-foreground)" }}>{item.payload.share}%</div>
       )}

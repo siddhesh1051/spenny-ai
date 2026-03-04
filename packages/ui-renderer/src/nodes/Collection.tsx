@@ -32,10 +32,10 @@ export function Collection({ node, callbacks }: { node: UiCollectionNode; callba
 
   const hasUndo = !!callbacks?.onUndo;
   const visible = node.items.filter(item => !item.id || !removedIds.has(item.id));
-  const visibleTotal = visible.reduce((sum, item) => {
-    const v = typeof item.value === "number" ? item.value : parseFloat(String(item.value)) || 0;
-    return sum + v;
-  }, 0);
+  // Only compute a numeric total when all visible values are actual numbers
+  const visibleTotal = visible.every(item => typeof item.value === "number")
+    ? visible.reduce((sum, item) => sum + (item.value as number), 0)
+    : null;
 
   const handleUndoOne = async (id: string) => {
     if (!callbacks?.onUndo || undoingIds.has(id)) return;
@@ -129,7 +129,7 @@ export function Collection({ node, callbacks }: { node: UiCollectionNode; callba
           })}
         </div>
 
-        {visible.length > 1 && visibleTotal > 0 && (
+        {visible.length > 1 && visibleTotal != null && visibleTotal > 0 && (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.625rem", fontSize: "0.875rem", fontWeight: 700 }}>
             Total: {visibleTotal.toLocaleString()}
           </div>

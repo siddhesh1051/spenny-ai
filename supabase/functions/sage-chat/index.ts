@@ -435,10 +435,11 @@ ${UI_COMPONENT_CATALOG}
 Compose a concise confirmation UI. Rules:
 - MUST include this exact collection node as one of the children (do not modify it):
 ${JSON.stringify(collectionNode)}
-- Optionally add a "block" subheading before it (e.g. "2 expenses logged")
-- Optionally add a brief "block" body or "insight" message after (1 sentence max, encouraging)
+- Optionally add a "block" subheading before the collection (e.g. "2 expenses logged")
+- Do NOT add a "block" with style "insight" — no Sage Insight for expense logging
 - Do NOT add charts, tables, or summary cards for expense logging
 - Keep it minimal and celebratory
+- The collection node MUST be the last child
 
 Return ONLY valid JSON (no markdown):
 { "layout": { "kind": "column", "children": [ ...nodes including the collection node ] } }`,
