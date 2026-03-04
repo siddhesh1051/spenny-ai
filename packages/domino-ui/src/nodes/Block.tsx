@@ -1,4 +1,4 @@
-import { Star } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import type { UiBlockNode } from "../types";
 
 export function Block({ node }: { node: UiBlockNode }) {
@@ -27,7 +27,7 @@ export function Block({ node }: { node: UiBlockNode }) {
         marginTop: "1rem",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.375rem" }}>
-          <Star style={{ width: "0.875rem", height: "0.875rem", color: "#059669", fill: "#10b981", flexShrink: 0 }} />
+          <Sparkles style={{ width: "0.875rem", height: "0.875rem", color: "#059669", fill: "#10b981", flexShrink: 0 }} />
           <span style={{
             fontSize: "0.7rem",
             fontWeight: 600,

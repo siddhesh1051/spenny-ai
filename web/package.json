@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "sdk:watch": "cd ../packages/domino-ui && npm run build -- --watch",
     "build": "tsc -b && vite build",
     "build:prod": "tsc -p tsconfig.app.prod.json && vite build",
     "lint": "eslint .",
