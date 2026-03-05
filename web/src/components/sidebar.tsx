@@ -6,7 +6,6 @@ import {
   LogOut,
   Receipt,
   MessageCircle,
-  Server,
   Sparkles,
   ChevronLeft,
   ChevronRight,
@@ -99,6 +98,10 @@ export function Sidebar({
   const { theme, setTheme } = useTheme();
   const userName = user?.user_metadata?.full_name || user?.email;
 
+  // On mobile the sidebar is always shown expanded (never collapsed)
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const effectiveCollapsed = isMobile ? false : isCollapsed;
+
   const handleLinkClick = () => {
     if (window.innerWidth < 768) {
       setIsOpen(false);
@@ -122,11 +125,11 @@ export function Sidebar({
           "transition-all duration-300 ease-in-out",
           "md:relative md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full",
-          isCollapsed ? "w-[64px]" : "w-[240px]",
+          effectiveCollapsed ? "w-[64px]" : "w-[240px]",
         ].join(" ")}
       >
         {/* Logo */}
-        <div className={`flex items-center h-14 shrink-0 ${isCollapsed ? "justify-center" : "px-5"}`}>
+        <div className={`flex items-center h-14 shrink-0 ${effectiveCollapsed ? "justify-center" : "px-5"}`}>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -138,7 +141,7 @@ export function Sidebar({
           <span
             className={[
               "ml-2.5 font-bold text-base whitespace-nowrap transition-all duration-300 overflow-hidden",
-              isCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
+              effectiveCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
             ].join(" ")}
           >
             Spenny AI
@@ -146,48 +149,64 @@ export function Sidebar({
         </div>
 
         {/* Divider */}
-        <div className={`border-t mb-6 ${isCollapsed ? "mx-3" : "mx-4"}`} />
+        <div className={`border-t mb-6 ${effectiveCollapsed ? "mx-3" : "mx-4"}`} />
 
         {/* Nav */}
-        <nav className={`flex-1 space-y-1 overflow-hidden ${isCollapsed ? "px-2" : "px-4"}`}>
+        <nav className={`flex-1 space-y-1 overflow-hidden ${effectiveCollapsed ? "px-2" : "px-4"}`}>
           <NavItem
             to="/"
             end
             icon={Sparkles}
             label="Sage"
-            isCollapsed={isCollapsed}
+            isCollapsed={effectiveCollapsed}
             onLinkClick={handleLinkClick}
           />
           <NavItem
             to="/transactions"
             icon={Receipt}
             label="All Transactions"
-            isCollapsed={isCollapsed}
+            isCollapsed={effectiveCollapsed}
             onLinkClick={handleLinkClick}
           />
           <NavItem
             to="/analytics"
             icon={BarChart2}
             label="Analytics"
-            isCollapsed={isCollapsed}
+            isCollapsed={effectiveCollapsed}
             onLinkClick={handleLinkClick}
           />
           <NavItem
             to="/whatsapp-integration"
             icon={MessageCircle}
             label="WhatsApp"
-            isCollapsed={isCollapsed}
+            isCollapsed={effectiveCollapsed}
             onLinkClick={handleLinkClick}
+            badge={
+              !effectiveCollapsed ? (
+                <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  Pro
+                </span>
+              ) : undefined
+            }
           />
           <NavItem
             to="/gmail-sync"
             icon={Mail}
             label="Gmail Sync"
-            isCollapsed={isCollapsed}
+            isCollapsed={effectiveCollapsed}
             onLinkClick={handleLinkClick}
+            badge={
+              !effectiveCollapsed ? (
+                <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  Pro
+                </span>
+              ) : undefined
+            }
           />
 
-          {/* MCP Server — disabled */}
+          {/* MCP Server — commented out, enable when ready
           {isCollapsed ? (
             <div
               className="flex justify-center py-0.5"
@@ -206,33 +225,34 @@ export function Sidebar({
               </span>
             </div>
           )}
+          */}
 
           <NavItem
             to="/settings"
             icon={Settings}
             label="Settings"
-            isCollapsed={isCollapsed}
+            isCollapsed={effectiveCollapsed}
             onLinkClick={handleLinkClick}
           />
         </nav>
 
         {/* Bottom section */}
-        <div className={`border-t mt-2 ${isCollapsed ? "mx-3" : "mx-4"}`} />
+        <div className={`border-t mt-2 ${effectiveCollapsed ? "mx-3" : "mx-4"}`} />
 
         {/* Collapse toggle — desktop only */}
-        <div className={`hidden md:flex items-center py-2 ${isCollapsed ? "px-2" : "px-4"}`}>
+        <div className={`hidden md:flex items-center py-2 ${effectiveCollapsed ? "px-2" : "px-4"}`}>
           {/* spacer pushes button right when expanded */}
-          {!isCollapsed && <div className="flex-1" />}
+          {!effectiveCollapsed && <div className="flex-1" />}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             className={[
               "w-8 h-8 shrink-0 flex items-center justify-center rounded-lg",
               "hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150",
-              isCollapsed ? "mx-auto" : "",
+              effectiveCollapsed ? "mx-auto" : "",
             ].join(" ")}
           >
-            {isCollapsed ? (
+            {effectiveCollapsed ? (
               <ChevronRight className="h-4 w-4" />
             ) : (
               <ChevronLeft className="h-4 w-4" />
@@ -241,7 +261,7 @@ export function Sidebar({
         </div>
 
         {/* Theme toggle */}
-        {isCollapsed ? (
+        {effectiveCollapsed ? (
           <div className="flex justify-center px-2 py-1">
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "system" : "dark")}
@@ -289,10 +309,10 @@ export function Sidebar({
         )}
 
         {/* User profile */}
-        <div className={`pb-3 ${isCollapsed ? "flex justify-center px-0" : "px-4"}`}>
+        <div className={`pb-3 ${effectiveCollapsed ? "flex justify-center px-0" : "px-4"}`}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              {isCollapsed ? (
+              {effectiveCollapsed ? (
                 <button
                   className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted transition-colors duration-150"
                   title={userName}
