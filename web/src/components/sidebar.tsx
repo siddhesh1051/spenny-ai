@@ -13,6 +13,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Mail,
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { supabase } from "@/lib/supabase";
@@ -175,6 +176,13 @@ export function Sidebar({
             to="/whatsapp-integration"
             icon={MessageCircle}
             label="WhatsApp"
+            isCollapsed={isCollapsed}
+            onLinkClick={handleLinkClick}
+          />
+          <NavItem
+            to="/gmail-sync"
+            icon={Mail}
+            label="Gmail Sync"
             isCollapsed={isCollapsed}
             onLinkClick={handleLinkClick}
           />
