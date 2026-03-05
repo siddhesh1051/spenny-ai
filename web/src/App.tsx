@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
 import SagePage from "./pages/SagePage";
+import GmailSyncPage from "./pages/GmailSyncPage";
 import Groq from "groq-sdk";
 
 interface Expense {
@@ -189,6 +190,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/analytics": "Analytics",
   "/settings": "Settings",
   "/whatsapp-integration": "WhatsApp Integration",
+  "/gmail-sync": "Gmail Sync",
   "/api-keys": "API Keys",
   "/mcp-server": "MCP Server",
   "/share-target": "Share Image",
@@ -1345,6 +1347,7 @@ Please extract all expenses from: '${text}'`,
               }
             />
             <Route path="/whatsapp-integration" element={<WhatsAppIntegrationPage />} />
+            <Route path="/gmail-sync" element={<GmailSyncPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
             {/* /sage and /mcp-server redirect to root */}
