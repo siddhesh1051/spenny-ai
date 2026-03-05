@@ -11,24 +11,20 @@ import { VoiceScene } from "./scenes/VoiceScene";
 import { BankStatementScene } from "./scenes/BankStatementScene";
 import { OutroScene } from "./scenes/OutroScene";
 
-// ── Scene durations (seconds × 60fps) ────────────────────────────────────────
-// 1. Intro:           4.5s = 270 frames
-// 2. FormRejection:   5.0s = 300 frames
-// 3. SageChatLog:     5.5s = 330 frames  (text chat)
-// 4. ReceiptScan:     7.0s = 420 frames  (upload receipt + scan)
-// 5. Voice:           7.0s = 420 frames  (voice recording)
-// 6. BankStatement:   7.5s = 450 frames  (bank statement PDF/CSV)
-// 7. SageChatQuery:   6.5s = 390 frames  (spending insights)
-// 8. Outro:           5.5s = 330 frames
-//
-// Transitions: 7 × 40 frames = 280 frames removed
-// Total = (270+300+330+420+420+450+390+330) - 280 = 2910 - 280 = 2630 frames ≈ 43.8s
-
-const TRANSITION_FRAMES = 40;
-
-const fade20 = fade();
-const fadeTiming = linearTiming({ durationInFrames: TRANSITION_FRAMES });
-const slideTiming = springTiming({ config: { damping: 200 }, durationInFrames: TRANSITION_FRAMES });
+// Scene durations in seconds — fps-independent.
+// Actual frame counts are derived at runtime from useVideoConfig().fps.
+const SCENE_SECONDS = {
+  intro:        4.5,
+  formReject:   5.0,
+  chatLog:      5.5,
+  receiptScan:  7.0,
+  voice:        7.0,
+  bankStatement:7.5,
+  chatQuery:    6.5,
+  outro:        5.5,
+};
+// Transition was 40 frames at 60fps ≈ 0.667s
+const TRANSITION_SECONDS = 40 / 60;
 
 // Letterbox vignette overlay — uses design dimensions, not video config
 const Vignette: React.FC<{ width: number; height: number }> = ({ width, height }) => (
@@ -73,13 +69,19 @@ const Grain: React.FC<{ width: number; height: number }> = ({ width, height }) =
 // transitions/slides work correctly at any output resolution.
 
 export const SageTrailer: React.FC = () => {
-  const { width, height } = useVideoConfig();
-  const scale = width / DESIGN_WIDTH; // 2.0 at 2K, 1.0 at 720p
+  const { width, height, fps } = useVideoConfig();
+  const scale = width / DESIGN_WIDTH;
+
+  // Derive all frame counts from fps so the video plays at the correct
+  // wall-clock duration regardless of whether we render at 60, 120fps, etc.
+  const s = (seconds: number) => Math.round(seconds * fps);
+  const TRANSITION_FRAMES = Math.round(TRANSITION_SECONDS * fps);
+  const fade20 = fade();
+  const fadeTiming = linearTiming({ durationInFrames: TRANSITION_FRAMES });
+  const slideTiming = springTiming({ config: { damping: 200 }, durationInFrames: TRANSITION_FRAMES });
 
   return (
-    // Outer shell fills the actual render canvas
     <div style={{ width, height, background: "#000", overflow: "hidden", position: "relative" }}>
-      {/* Scaled design surface — everything inside renders at 1280×720 then scales up */}
       <div style={{
         width: DESIGN_WIDTH,
         height: DESIGN_HEIGHT,
@@ -92,82 +94,60 @@ export const SageTrailer: React.FC = () => {
       }}>
         <TransitionSeries>
           {/* ── 1. Intro ─────────────────────────────── */}
-          <TransitionSeries.Sequence durationInFrames={270}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.intro)}>
             <IntroScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={fade20}
-            timing={fadeTiming}
-          />
+          <TransitionSeries.Transition presentation={fade20} timing={fadeTiming} />
 
           {/* ── 2. Form Rejection ────────────────────── */}
-          <TransitionSeries.Sequence durationInFrames={300}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.formReject)}>
             <FormRejectionScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={slideTiming}
-          />
+          <TransitionSeries.Transition presentation={slide({ direction: "from-right" })} timing={slideTiming} />
 
-          {/* ── 3. Sage Chat — Log Expenses (text) ───── */}
-          <TransitionSeries.Sequence durationInFrames={330}>
+          {/* ── 3. Sage Chat — Log Expenses ───────────── */}
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.chatLog)}>
             <SageChatLogScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={slideTiming}
-          />
+          <TransitionSeries.Transition presentation={slide({ direction: "from-right" })} timing={slideTiming} />
 
           {/* ── 4. Receipt Scan ───────────────────────── */}
-          <TransitionSeries.Sequence durationInFrames={420}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.receiptScan)}>
             <ReceiptScanScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={slideTiming}
-          />
+          <TransitionSeries.Transition presentation={slide({ direction: "from-right" })} timing={slideTiming} />
 
           {/* ── 5. Voice Recording ───────────────────── */}
-          <TransitionSeries.Sequence durationInFrames={420}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.voice)}>
             <VoiceScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={slideTiming}
-          />
+          <TransitionSeries.Transition presentation={slide({ direction: "from-right" })} timing={slideTiming} />
 
           {/* ── 6. Bank Statement ─────────────────────── */}
-          <TransitionSeries.Sequence durationInFrames={450}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.bankStatement)}>
             <BankStatementScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={slide({ direction: "from-right" })}
-            timing={slideTiming}
-          />
+          <TransitionSeries.Transition presentation={slide({ direction: "from-right" })} timing={slideTiming} />
 
           {/* ── 7. Sage Chat — Spending Query ─────────── */}
-          <TransitionSeries.Sequence durationInFrames={390}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.chatQuery)}>
             <SageChatQueryScene />
           </TransitionSeries.Sequence>
 
-          <TransitionSeries.Transition
-            presentation={fade20}
-            timing={fadeTiming}
-          />
+          <TransitionSeries.Transition presentation={fade20} timing={fadeTiming} />
 
           {/* ── 8. Outro ──────────────────────────────── */}
-          <TransitionSeries.Sequence durationInFrames={330}>
+          <TransitionSeries.Sequence durationInFrames={s(SCENE_SECONDS.outro)}>
             <OutroScene />
           </TransitionSeries.Sequence>
         </TransitionSeries>
 
-        {/* Global overlays at design resolution */}
         <Vignette width={DESIGN_WIDTH} height={DESIGN_HEIGHT} />
         <Grain width={DESIGN_WIDTH} height={DESIGN_HEIGHT} />
       </div>

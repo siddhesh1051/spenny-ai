@@ -2,11 +2,17 @@ import "./index.css";
 import { Composition } from "remotion";
 import { SageTrailer } from "./SageTrailer";
 
-// Duration = sum of scene frames - transition frames
-// Scenes: 270 + 300 + 330 + 420 + 420 + 450 + 390 + 330 = 2910
-// Transitions: 7 × 40 = 280
-// Total: 2910 - 280 = 2630 frames ≈ 43.8s at 60fps
-const TOTAL_FRAMES = 2630;
+const FPS = 60;
+
+// Scene durations in seconds (fps-independent)
+// 4.5 + 5.0 + 5.5 + 7.0 + 7.0 + 7.5 + 6.5 + 5.5 = 48.5s of scenes
+// 7 transitions × (40/60)s ≈ 4.67s removed
+// Total wall-clock ≈ 43.8s
+const SCENE_SECONDS = [4.5, 5.0, 5.5, 7.0, 7.0, 7.5, 6.5, 5.5];
+const TRANSITION_SECONDS = 40 / 60; // transition was 40 frames at 60fps
+const TOTAL_FRAMES =
+  Math.round(SCENE_SECONDS.reduce((a, b) => a + b, 0) * FPS) -
+  Math.round(7 * TRANSITION_SECONDS * FPS);
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -15,9 +21,9 @@ export const RemotionRoot: React.FC = () => {
         id="SageTrailer"
         component={SageTrailer}
         durationInFrames={TOTAL_FRAMES}
-        fps={60}
-        width={1920}
-        height={1080}
+        fps={FPS}
+        width={2560}
+        height={1440}
       />
     </>
   );
