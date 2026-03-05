@@ -225,7 +225,7 @@ The root "layout" must always be a "column" node.
 - "insight": green highlighted insight box — use for AI-generated conclusions, tips, observations
 
 **summary** – a single metric card (heading + value)
-{ "kind": "summary", "id": "unique-id", "heading": "Label", "primary": "₹1,200", "secondary": "optional note or null", "sentiment": "up"|"down"|"neutral" }
+{ "kind": "summary", "id": "unique-id", "heading": "Label", "primary": "1,200", "secondary": "optional note or null", "sentiment": "up"|"down"|"neutral" }
 - sentiment "up" = green, "down" = orange, "neutral" = grey for the secondary text
 
 ### Data visualisation nodes
@@ -258,12 +258,6 @@ The root "layout" must always be a "column" node.
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-function formatINR(n: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(n);
-}
-
 const VALID_CATEGORIES = ["food", "travel", "groceries", "entertainment", "utilities", "rent", "other"];
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -290,9 +284,20 @@ Deno.serve(async (req: Request) => {
   const userId = user.id;
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // ── Get user's Groq key ──
-  const { data: profile } = await db.from("profiles").select("groq_api_key").eq("id", userId).single();
+  // ── Get user's Groq key + currency preference ──
+  const { data: profile } = await db.from("profiles").select("groq_api_key, currency").eq("id", userId).single();
   const groqKey = profile?.groq_api_key || SERVER_GROQ_KEY;
+  const userCurrency: string = profile?.currency || "INR";
+
+  function formatCurrency(n: number): string {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency", currency: userCurrency, minimumFractionDigits: 0, maximumFractionDigits: 0,
+      }).format(n);
+    } catch {
+      return `${userCurrency} ${n.toFixed(0)}`;
+    }
+  }
 
   if (!groqKey) {
     return jsonResponse({
@@ -422,10 +427,10 @@ Rules:
         items: rows,
       };
 
-      const expenseSummary = rows.map(r => `- ${r.description} (${r.category}): ${formatINR(r.amount)}`).join("\n");
+      const expenseSummary = rows.map(r => `- ${r.description} (${r.category}): ${formatCurrency(r.amount)}`).join("\n");
 
       const aiLayout = await groqJSON<{ layout: unknown }>(
-        `You are Spenny AI. The user just logged ${rows.length} expense${rows.length > 1 ? "s" : ""} totalling ${formatINR(total)}.
+        `You are Spenny AI. The user just logged ${rows.length} expense${rows.length > 1 ? "s" : ""} totalling ${formatCurrency(total)}.
 
 Logged expenses:
 ${expenseSummary}
@@ -530,11 +535,11 @@ Return ONLY valid JSON: { "layout": { "kind": "column", "children": [...] } }`,
       const sampleLines = expenses
         .slice(0, 20)
         .map((e: { date: string; category: string; description: string; amount: number }) =>
-          `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+          `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ${formatCurrency(e.amount)}`
         )
         .join("\n");
       const catSummary = categoryBreakdown
-        .map((c) => `${c.category}: ${formatINR(c.total)} (${c.count} txns, ${c.percentage}%)`)
+        .map((c) => `${c.category}: ${formatCurrency(c.total)} (${c.count} txns, ${c.percentage}%)`)
         .join(", ");
 
       // Build title context
@@ -548,7 +553,7 @@ Return ONLY valid JSON: { "layout": { "kind": "column", "children": [...] } }`,
           parts.push(from.toLocaleString("default", { month: "long", year: "numeric" }));
         } else {
           parts.push(
-            `${from.toLocaleDateString("en-IN", { month: "short", day: "numeric" })} – ${to.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}`
+            `${from.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${to.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
           );
         }
       }
@@ -571,7 +576,7 @@ Return ONLY valid JSON: { "layout": { "kind": "column", "children": [...] } }`,
 
 ## Data available to you
 
-Total: ${formatINR(totalAmount)} across ${expenses.length} transactions
+Total: ${formatCurrency(totalAmount)} across ${expenses.length} transactions
 Title context: "${titleContext}"
 Category breakdown:
 ${catSummary}
@@ -605,11 +610,11 @@ Use the exact JSON schema from the catalog. Return ONLY valid JSON (no markdown)
             {
               kind: "row",
               children: [
-                { kind: "summary", id: "total", heading: "Total", primary: formatINR(totalAmount), secondary: null, sentiment: "neutral" },
+                { kind: "summary", id: "total", heading: "Total", primary: formatCurrency(totalAmount), secondary: null, sentiment: "neutral" },
                 { kind: "summary", id: "txns", heading: "Transactions", primary: String(expenses.length), secondary: null, sentiment: "neutral" },
               ],
             },
-            { kind: "block", style: "insight", text: `Found ${expenses.length} transactions totalling ${formatINR(totalAmount)}.` },
+            { kind: "block", style: "insight", text: `Found ${expenses.length} transactions totalling ${formatCurrency(totalAmount)}.` },
           ],
         },
       };
@@ -659,13 +664,13 @@ Use the exact JSON schema from the catalog. Return ONLY valid JSON (no markdown)
       const metrics = [
         {
           label: `${now.toLocaleString("default", { month: "long" })} Total`,
-          value: formatINR(totalThis),
+          value: formatCurrency(totalThis),
           change: pct !== 0 ? `${pct > 0 ? "+" : ""}${pct}% vs last month` : undefined,
           positive: pct <= 0,
         },
         {
           label: "Daily Average",
-          value: formatINR(dailyAvg),
+          value: formatCurrency(dailyAvg),
           change: `${daysSoFar} days so far`,
           positive: true,
         },
@@ -673,7 +678,7 @@ Use the exact JSON schema from the catalog. Return ONLY valid JSON (no markdown)
           ? [{
               label: "Top Category",
               value: topCat[0].charAt(0).toUpperCase() + topCat[0].slice(1),
-              change: `${formatINR(topCat[1])} (90 days)`,
+              change: `${formatCurrency(topCat[1])} (90 days)`,
               positive: false,
             }]
           : []),
@@ -692,12 +697,12 @@ Use the exact JSON schema from the catalog. Return ONLY valid JSON (no markdown)
       const sampleLines = (all ?? [])
         .slice(0, 15)
         .map((e: { date: string; category: string; description: string; amount: number }) =>
-          `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+          `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ${formatCurrency(e.amount)}`
         )
         .join("\n");
 
       const metricsContext = metrics.map(m => `${m.label}: ${m.value}${m.change ? ` (${m.change})` : ""}`).join("\n");
-      const catBreakdownContext = catBreakdown.map(c => `${c.category}: ${formatINR(c.total)} (${c.count} txns, ${c.percentage}%)`).join("\n");
+      const catBreakdownContext = catBreakdown.map(c => `${c.category}: ${formatCurrency(c.total)} (${c.count} txns, ${c.percentage}%)`).join("\n");
 
       const uiResponse = await groqJSON<{ layout: unknown }>(
         `You are Spenny AI, a friendly financial advisor. User asked: "${message}"
@@ -710,8 +715,8 @@ ${metricsContext}
 Category breakdown (top 6, 90 days):
 ${catBreakdownContext}
 
-This month (${now.toLocaleString("default", { month: "long" })}): ${formatINR(totalThis)} (${thisM.length} expenses)
-Last month: ${formatINR(totalLast)} (${lastM.length} expenses)
+This month (${now.toLocaleString("default", { month: "long" })}): ${formatCurrency(totalThis)} (${thisM.length} expenses)
+Last month: ${formatCurrency(totalLast)} (${lastM.length} expenses)
 Month-over-month change: ${pct > 0 ? "+" : ""}${pct}%
 
 Recent transactions:
@@ -761,7 +766,7 @@ Return ONLY valid JSON (no markdown):
               y: "value",
               points: catBreakdown.map(c => ({ label: c.category, value: c.total, share: c.percentage })),
             } : null,
-            { kind: "block", style: "insight", text: `Your top spending category is ${catBreakdown[0]?.category ?? "unknown"} at ${formatINR(catBreakdown[0]?.total ?? 0)}.` },
+            { kind: "block", style: "insight", text: `Your top spending category is ${catBreakdown[0]?.category ?? "unknown"} at ${formatCurrency(catBreakdown[0]?.total ?? 0)}.` },
           ].filter(Boolean),
         },
       };

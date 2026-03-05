@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
+import { useCurrency } from "@/context/CurrencyContext";
 import {
   ChartContainer,
   ChartTooltip,
@@ -45,6 +46,7 @@ export function AnalyticsPage({
   isLoading: boolean;
 }) {
   const [isMobile, setIsMobile] = useState(false);
+  const { formatAmount } = useCurrency();
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 600);
@@ -182,7 +184,7 @@ export function AnalyticsPage({
               </CardHeader>
               <CardContent>
                 <p className="text-2xl md:text-3xl font-bold">
-                  ₹{totalExpense.toFixed(2)}
+                  {formatAmount(totalExpense)}
                 </p>
               </CardContent>
             </Card>
@@ -192,7 +194,7 @@ export function AnalyticsPage({
               </CardHeader>
               <CardContent>
                 <p className="text-2xl md:text-3xl font-bold">
-                  ₹{averageDailySpend.toFixed(2)}
+                  {formatAmount(averageDailySpend)}
                 </p>
               </CardContent>
             </Card>
@@ -217,7 +219,7 @@ export function AnalyticsPage({
                   <div key={category.name} className="space-y-1">
                     <div className="flex justify-between">
                       <span>{category.name}</span>
-                      <span>₹{category.value.toFixed(2)}</span>
+                      <span>{formatAmount(category.value)}</span>
                     </div>
                     <Progress
                       value={(category.value / totalExpense) * 100}

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useCurrency } from "@/context/CurrencyContext";
 import { Button } from "@/components/ui/button";
 import {
   Edit,
@@ -79,6 +80,7 @@ export function AllTransactionsPage({
   deleteExpense: (id: string) => Promise<void>;
   updateExpense: (id: string, updatedFields: Partial<Expense>) => Promise<void>;
 }) {
+  const { formatAmount, currency } = useCurrency();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -183,7 +185,7 @@ export function AllTransactionsPage({
   }, [expenses, exportPreset, exportDateFrom, exportDateTo]);
 
   const downloadCSV = (list: Expense[], from: string, to: string) => {
-    const headers = "Date,Description,Category,Amount (₹)\n";
+    const headers = `Date,Description,Category,Amount (${currency})\n`;
     const rows = list
       .map(
         (e) =>
@@ -209,7 +211,7 @@ export function AllTransactionsPage({
     doc.text(`Date range: ${from} to ${to}`, 14, 22);
     autoTable(doc, {
       startY: 28,
-      head: [["Date", "Description", "Category", "Amount (₹)"]],
+      head: [["Date", "Description", "Category", `Amount (${currency})`]],
       body: list.map((e) => [
         new Date(e.date).toLocaleDateString(),
         (e.description || "").slice(0, 40),
@@ -357,7 +359,7 @@ export function AllTransactionsPage({
                 <p className="text-sm text-muted-foreground">
                   Total {hasActiveFilters ? `(filtered)` : ""}
                 </p>
-                <p className="text-2xl font-bold">₹{totalExpense.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{formatAmount(totalExpense)}</p>
               </div>
             )}
           </div>
@@ -456,7 +458,7 @@ export function AllTransactionsPage({
                         </p>
                       </div>
                       <p className="font-bold">
-                        ₹{expense.amount.toFixed(2)}
+                        {formatAmount(expense.amount)}
                       </p>
                     </div>
                     <div className="flex justify-between items-center mt-2">
@@ -511,7 +513,7 @@ export function AllTransactionsPage({
                           {new Date(expense.date).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right font-semibold">
-                          ₹{expense.amount.toFixed(2)}
+                          {formatAmount(expense.amount)}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button

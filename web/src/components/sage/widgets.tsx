@@ -9,6 +9,7 @@ import { formatDuration } from "@/utils/sage";
 import { createPortal } from "react-dom";
 import { UiRenderer } from "domino-ui";
 import type { UiLayout, UiNode, UiTableRow, UiCollectionItem } from "domino-ui";
+import { useCurrency } from "@/context/CurrencyContext";
 
 
 // If Tip is only used here, define it locally instead of importing
@@ -42,9 +43,9 @@ export function CategoryBadge({ category }: { category: string }) {
 // Maps backend domain-specific shapes (description/category/amount/date) to
 // the generic SDK shapes (label/badge/value/secondary) before passing to UiRenderer.
 
-function adaptLayoutForSdk(node: UiNode): UiNode {
+function adaptLayoutForSdk(node: UiNode, formatAmount: (n: number) => string): UiNode {
   if (node.kind === "column" || node.kind === "row") {
-    return { ...node, children: node.children.map(adaptLayoutForSdk) } as UiNode;
+    return { ...node, children: node.children.map((c) => adaptLayoutForSdk(c, formatAmount)) } as UiNode;
   }
   if (node.kind === "table") {
     // Backend sends { id, date, description, category, amount }
@@ -58,9 +59,9 @@ function adaptLayoutForSdk(node: UiNode): UiNode {
       id: r.id,
       label: r.description,
       badge: r.category,
-      value: `₹${r.amount.toLocaleString("en-IN")}`,
+      value: formatAmount(r.amount),
       secondary: r.date
-        ? new Date(r.date).toLocaleDateString("en-IN", {
+        ? new Date(r.date).toLocaleDateString(undefined, {
           day: "numeric",
           month: "short",
           year: "numeric",
@@ -85,7 +86,7 @@ function adaptLayoutForSdk(node: UiNode): UiNode {
         id: le.id,
         label: le.description,
         badge: le.category,
-        value: `₹${le.amount.toLocaleString("en-IN")}`,
+        value: formatAmount(le.amount),
         icon: CATEGORY_EMOJI[le.category?.toLowerCase()] ?? "📦",
       };
     });
@@ -94,14 +95,15 @@ function adaptLayoutForSdk(node: UiNode): UiNode {
   return node;
 }
 
-function adaptUiResponseForSdk(layout: UiLayout): UiLayout {
+function adaptUiResponseForSdk(layout: UiLayout, formatAmount: (n: number) => string): UiLayout {
   return {
     kind: "column",
-    children: layout.children.map(adaptLayoutForSdk),
+    children: layout.children.map((c) => adaptLayoutForSdk(c, formatAmount)),
   };
 }
 
 export function CategoryBreakdownSection({ breakdown }: { breakdown: CategoryItem[] }) {
+  const { formatAmount } = useCurrency();
   return (
     <div className="space-y-3">
       {breakdown.map((item, i) => (
@@ -120,7 +122,7 @@ export function CategoryBreakdownSection({ breakdown }: { breakdown: CategoryIte
             </div>
             <div className="flex items-center gap-2">
               <span className="font-semibold tabular-nums text-sm">
-                ₹{item.total.toLocaleString("en-IN")}
+                {formatAmount(item.total)}
               </span>
               <span className="text-xs text-muted-foreground w-7 text-right tabular-nums">
                 {item.percentage}%
@@ -206,12 +208,13 @@ export function InlineExportButtons({
 }) {
   const [csvDone, setCsvDone] = useState(false);
   const [pdfDone, setPdfDone] = useState(false);
+  const { formatAmount, currency } = useCurrency();
 
   const slug = (title ?? "expenses").toLowerCase().replace(/\s+/g, "-").slice(0, 40);
   const dateStr = new Date().toISOString().slice(0, 10);
 
   const handleCSV = () => {
-    const header = ["Date", "Description", "Category", "Amount (INR)"];
+    const header = ["Date", "Description", "Category", `Amount (${currency})`];
     const rows = expenses.map((e) => [
       new Date(e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
       `"${(e.description ?? "").replace(/"/g, '""')}"`,
@@ -235,10 +238,10 @@ export function InlineExportButtons({
   const handlePDF = () => {
     const total = totalAmount ?? expenses.reduce((s, e) => s + e.amount, 0);
     const rows = expenses.map((e) => `<tr>
-      <td>${new Date(e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+      <td>${new Date(e.date).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}</td>
       <td>${e.description ?? ""}</td>
       <td><span class="badge badge-${e.category}">${e.category}</span></td>
-      <td class="amt">₹${e.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+      <td class="amt">${formatAmount(e.amount)}</td>
     </tr>`).join("");
 
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
@@ -266,15 +269,15 @@ tfoot td{padding:10px 12px;font-weight:700;border-top:2px solid #e5e7eb}tfoot td
 footer{margin-top:32px;font-size:11px;color:#bbb;text-align:center}
 @media print{body{padding:20px}}
 </style></head><body>
-<header><h1>${title ?? "Expense Report"}</h1><span>Generated ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })} · Spenny AI</span></header>
+<header><h1>${title ?? "Expense Report"}</h1><span>Generated ${new Date().toLocaleDateString(undefined, { day: "2-digit", month: "long", year: "numeric" })} · Spenny AI</span></header>
 <div class="meta">
-<div class="meta-card"><div class="label">Total Spent</div><div class="value">₹${total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div></div>
+<div class="meta-card"><div class="label">Total Spent</div><div class="value">${formatAmount(total)}</div></div>
 <div class="meta-card"><div class="label">Transactions</div><div class="value">${expenses.length}</div></div>
 </div>
 <table>
 <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="amt">Amount</th></tr></thead>
 <tbody>${rows}</tbody>
-<tfoot><tr><td colspan="3">Total</td><td class="amt">₹${total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td></tr></tfoot>
+<tfoot><tr><td colspan="3">Total</td><td class="amt">${formatAmount(total)}</td></tr></tfoot>
 </table>
 <footer>Exported from Spenny AI · ${dateStr}</footer>
 <script>window.onload=()=>window.print()<\/script>
@@ -588,6 +591,8 @@ export function AssistantResponse({
   visible: boolean;
   onUndoLoggedExpenses?: (ids: string[]) => Promise<void>;
 }) {
+  const { formatAmount } = useCurrency();
+
   const style: React.CSSProperties = {
     opacity: visible ? 1 : 0,
     transform: visible ? "translateY(0)" : "translateY(14px)",
@@ -596,7 +601,7 @@ export function AssistantResponse({
 
   // All intents now use uiResponse driven by the SDK renderer
   if (response.uiResponse?.layout) {
-    const adapted = adaptUiResponseForSdk(response.uiResponse.layout as UiLayout);
+    const adapted = adaptUiResponseForSdk(response.uiResponse.layout as UiLayout, formatAmount);
     return (
       <div style={style} className="space-y-4">
         <UiRenderer

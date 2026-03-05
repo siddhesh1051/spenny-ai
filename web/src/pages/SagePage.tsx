@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useCurrency } from "@/context/CurrencyContext";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export default function SagePage({
   onSend?: () => void;
   deleteExpense?: (id: string) => Promise<void>;
 }) {
+  const { formatAmount } = useCurrency();
   const onUndoLoggedExpenses = useCallback(
     async (ids: string[]) => {
       if (!deleteExpense) return;
@@ -585,11 +587,11 @@ export default function SagePage({
     if (r.text) parts.push(r.text);
     if (r.expenses?.length) {
       parts.push(
-        r.expenses.map((e) => `${e.description} (${e.category}): ₹${e.amount}`).join("\n")
+        r.expenses.map((e) => `${e.description} (${e.category}): ${formatAmount(e.amount)}`).join("\n")
       );
     }
     if (r.loggedExpenses?.length) {
-      parts.push(r.loggedExpenses.map((e) => `${e.description}: ₹${e.amount}`).join("\n"));
+      parts.push(r.loggedExpenses.map((e) => `${e.description}: ${formatAmount(e.amount)}`).join("\n"));
     }
     return parts.join("\n\n");
   };

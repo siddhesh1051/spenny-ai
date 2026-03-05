@@ -43,15 +43,6 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
-/** Format INR amount */
-function formatINR(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 /** Send a WhatsApp text reply */
 async function sendWhatsAppReply(
@@ -270,7 +261,7 @@ async function classifyIntent(
   // Use LLM for ambiguous cases
   const contextInfo = context ? `
 Recent user activity:
-- Total expenses this month: ${context.monthlyTotal ? formatINR(context.monthlyTotal) : 'unknown'}
+- Total expenses this month: ${context.monthlyTotal ?? 'unknown'}
 - Top spending category: ${context.topCategory || 'unknown'}
 - Recent expenses: ${context.recentExpenses?.length || 0} transactions
 ` : '';
@@ -646,8 +637,8 @@ function parseExportFormat(text: string): "csv" | "pdf" | null {
 }
 
 /** Generate CSV content for expenses (UTF-8 with BOM). */
-function generateExportCSV(expenses: Array<{ date: string; description: string; category: string; amount: number }>): string {
-  const header = "Date,Description,Category,Amount (₹)\n";
+function generateExportCSV(expenses: Array<{ date: string; description: string; category: string; amount: number }>, currency = "INR"): string {
+  const header = `Date,Description,Category,Amount (${currency})\n`;
   const rows = expenses.map(
     (e) =>
       `${new Date(e.date).toISOString().split("T")[0]},"${(e.description || "").replace(/"/g, '""')}",${e.category},${e.amount.toFixed(2)}`
@@ -659,7 +650,9 @@ function generateExportCSV(expenses: Array<{ date: string; description: string; 
 function generateExportPDF(
   expenses: Array<{ date: string; description: string; category: string; amount: number }>,
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
+  fmt: (n: number) => string = (n) => `${n}`,
+  currency = "INR"
 ): Uint8Array {
   const doc = new jsPDF({ orientation: "landscape" });
   doc.setFontSize(14);
@@ -668,11 +661,11 @@ function generateExportPDF(
   doc.text(`Date range: ${dateFrom} to ${dateTo}`, 14, 22);
   
   const total = expenses.reduce((sum, e) => sum + e.amount, 0);
-  doc.text(`Total: ${formatINR(total)} | ${expenses.length} transactions`, 14, 27);
+  doc.text(`Total: ${fmt(total)} | ${expenses.length} transactions`, 14, 27);
   
   autoTable(doc, {
     startY: 32,
-    head: [["Date", "Description", "Category", "Amount (₹)"]],
+    head: [["Date", "Description", "Category", `Amount (${currency})`]],
     body: expenses.map((e) => [
       new Date(e.date).toISOString().split("T")[0],
       (e.description || "").slice(0, 40),
@@ -721,7 +714,9 @@ async function doExportAndSend(
   dateTo: string,
   formatChoice: "csv" | "pdf",
   phoneNumberId: string,
-  token: string
+  token: string,
+  fmt: (n: number) => string = (n) => `${n}`,
+  currency = "INR"
 ): Promise<void> {
   const fromTs = `${dateFrom}T00:00:00.000Z`;
   const toTs = `${dateTo}T23:59:59.999Z`;
@@ -757,7 +752,7 @@ async function doExportAndSend(
 
   try {
     if (formatChoice === "csv") {
-      const csvContent = generateExportCSV(expenses);
+      const csvContent = generateExportCSV(expenses, currency);
       const filename = `expenses_${dateFrom}_to_${dateTo}.csv`;
       const signedUrl = await uploadExportAndGetSignedUrl(
         supabase,
@@ -775,7 +770,7 @@ async function doExportAndSend(
         token
       );
     } else {
-      const pdfBytes = generateExportPDF(expenses, dateFrom, dateTo);
+      const pdfBytes = generateExportPDF(expenses, dateFrom, dateTo, fmt, currency);
       const filename = `expenses_${dateFrom}_to_${dateTo}.pdf`;
       const signedUrl = await uploadExportAndGetSignedUrl(
         supabase,
@@ -797,7 +792,7 @@ async function doExportAndSend(
     const total = expenses.reduce((sum, e) => sum + e.amount, 0);
     await sendWhatsAppReply(
       senderPhone,
-      `✅ Sent your expense report!\n\n📊 ${expenses.length} transactions\n💰 Total: ${formatINR(total)}\n⏰ Link expires in 1 hour.`,
+      `✅ Sent your expense report!\n\n📊 ${expenses.length} transactions\n💰 Total: ${fmt(total)}\n⏰ Link expires in 1 hour.`,
       phoneNumberId,
       token
     );
@@ -819,7 +814,7 @@ function getConversationReply(messageText: string, context?: ConversationContext
   // Greetings
   if (/^(hi|hello|hey|hiya|hola|namaste|good morning|good afternoon|good evening)/i.test(t)) {
     const contextGreeting = context?.monthlyTotal 
-      ? `\n\n📊 Quick update: You've spent ${formatINR(context.monthlyTotal)} this month${context.topCategory ? ` (mostly on ${context.topCategory})` : ''}.`
+      ? `\n\n📊 Quick update: You've spent ${formatCurrencyUser(context.monthlyTotal)} this month${context.topCategory ? ` (mostly on ${context.topCategory})` : ''}.`
       : '';
     return `Hi! 👋 I'm Spenny AI — your smart expense tracker on WhatsApp.${contextGreeting}\n\n*What I can do:*\n📝 Log expenses (text or voice)\n❓ Answer expense questions\n📤 Export your data\n💡 Give spending insights\n\nTry: "Spent 50 on coffee" or "How much last month?"`;
   }
@@ -1021,7 +1016,8 @@ async function answerExpenseQuery(
   question: string,
   userId: string,
   apiKey: string,
-  supabase: any
+  supabase: any,
+  fmt: (n: number) => string = (n) => `₹${n}`
 ): Promise<string> {
   const filters = await extractQueryFilters(question, apiKey);
   console.log("🔍 Query filters:", JSON.stringify(filters));
@@ -1069,8 +1065,8 @@ async function answerExpenseQuery(
     if (filters.category) parts.push(`in ${filters.category}`);
     if (filters.start_date) parts.push(`from ${filters.start_date}`);
     if (filters.end_date) parts.push(`to ${filters.end_date}`);
-    if (filters.min_amount) parts.push(`over ${formatINR(filters.min_amount)}`);
-    if (filters.max_amount) parts.push(`under ${formatINR(filters.max_amount)}`);
+    if (filters.min_amount) parts.push(`over ${formatCurrencyUser(filters.min_amount)}`);
+    if (filters.max_amount) parts.push(`under ${formatCurrencyUser(filters.max_amount)}`);
     if (filters.search_description) parts.push(`matching "${filters.search_description}"`);
     
     const context = parts.length > 0 ? ` ${parts.join(", ")}` : "";
@@ -1116,31 +1112,30 @@ async function answerExpenseQuery(
 
   // Build data for Groq
   const expenseLines = expenses.slice(0, 50).map((e: any) =>
-    `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+    `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ${fmt(e.amount)}`
   );
 
   const filterDesc = [];
   if (filters.start_date) filterDesc.push(`from ${filters.start_date}`);
   if (filters.end_date) filterDesc.push(`to ${filters.end_date}`);
   if (filters.category) filterDesc.push(`category: ${filters.category}`);
-  if (filters.min_amount) filterDesc.push(`min: ₹${filters.min_amount}`);
-  if (filters.max_amount) filterDesc.push(`max: ₹${filters.max_amount}`);
+  if (filters.min_amount) filterDesc.push(`min: ${fmt(filters.min_amount)}`);
+  if (filters.max_amount) filterDesc.push(`max: ${fmt(filters.max_amount)}`);
   if (filters.search_description) filterDesc.push(`search: "${filters.search_description}"`);
 
   const groupingInfo = groupedData 
     ? `\n\nGrouped by ${groupedData.type}:\n${Object.entries(groupedData.data)
         .sort((a: any, b: any) => b[1].total - a[1].total)
-        .map(([key, val]: [string, any]) => `${key}: ₹${val.total} (${val.count} items)`)
+        .map(([key, val]: [string, any]) => `${key}: ${fmt(val.total)} (${val.count} items)`)
         .join("\n")}`
     : "";
 
   const prompt = `You are Spenny AI, a friendly and helpful expense tracking assistant on WhatsApp.
 
 Today: ${today}
-Currency: Indian Rupees (₹ / INR)
 
 Query: ${filterDesc.length > 0 ? filterDesc.join(", ") : "all expenses"}
-Results: ${expenses.length} transactions, total ₹${totalAmount}${groupingInfo}
+Results: ${expenses.length} transactions, total ${fmt(totalAmount)}${groupingInfo}
 
 Sample data (date | category | description | amount):
 ${expenseLines.join("\n")}
@@ -1150,7 +1145,7 @@ User's question: "${question}"
 
 Instructions:
 1. Answer ACCURATELY using ONLY the data provided
-2. Use ₹ symbol and Indian number format (₹1,50,000)
+2. Format amounts using the same currency format as the sample data above
 3. Be CONCISE - this is WhatsApp (keep under 1000 chars when possible)
 4. Use WhatsApp formatting: *bold* for emphasis, • for bullets
 5. Calculate totals, averages, breakdowns, comparisons as needed
@@ -1295,7 +1290,8 @@ async function generateInsights(
   question: string,
   userId: string,
   apiKey: string,
-  supabase: any
+  supabase: any,
+  fmt: (n: number) => string = (n) => `₹${n}`
 ): Promise<string> {
   // Fetch recent spending data (last 90 days)
   const ninetyDaysAgo = new Date();
@@ -1337,36 +1333,31 @@ async function generateInsights(
   const categoryStats = Object.entries(byCategory)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([cat, amt]) => `${cat}: ₹${amt}`);
+    .map(([cat, amt]) => `${cat}: ${fmt(amt as number)}`);
 
   const prompt = `You are Spenny AI, a financial insights assistant. Provide personalized spending advice.
 
 User's question: "${question}"
 
 SPENDING DATA (last 90 days):
-- This month: ${thisMonth.length} expenses, ₹${totalThisMonth}
-- Last month: ${lastMonth.length} expenses, ₹${totalLastMonth}
-- Average daily spend: ₹${avgDaily.toFixed(0)}
+- This month: ${thisMonth.length} expenses, ${fmt(totalThisMonth)}
+- Last month: ${lastMonth.length} expenses, ${fmt(totalLastMonth)}
+- Average daily spend: ${fmt(avgDaily)}
 - Top categories: ${categoryStats.join(", ")}
 
 Recent expenses (sample):
 ${expenses.slice(0, 20).map((e: any) => 
-  `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ₹${e.amount}`
+  `${new Date(e.date).toISOString().split("T")[0]} | ${e.category} | ${e.description} | ${fmt(e.amount)}`
 ).join("\n")}
 
 Instructions:
 1. Provide ACTIONABLE insights based on the data
-2. Be specific with numbers and comparisons
+2. Be specific with numbers and comparisons — use the same currency format as the sample data
 3. Suggest realistic ways to save money
 4. Use WhatsApp formatting: *bold*, • bullets
 5. Be encouraging and positive
 6. Keep under 1000 characters
 7. Focus on what the user asked about
-
-Examples of good insights:
-- "Your food spending is ₹X this month vs ₹Y last month. Consider meal planning to save!"
-- "You spent ₹X on [category]. Here are 3 ways to reduce..."
-- "Compared to last month, you're spending Z% more on [category]"
 
 Provide helpful, specific advice now.`;
 
@@ -1624,7 +1615,7 @@ Deno.serve(async (req: Request) => {
       // ── Look up user by phone number ──
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("id, groq_api_key")
+        .select("id, groq_api_key, currency")
         .eq("whatsapp_phone", senderPhone)
         .single();
 
@@ -1642,6 +1633,16 @@ Deno.serve(async (req: Request) => {
       const userId = profile.id;
       // Use user's own Groq key if available, else fallback to server key
       const groqKey = profile.groq_api_key || GROQ_API_KEY;
+      const userCurrency: string = profile.currency || "INR";
+      const formatCurrencyUser = (n: number): string => {
+        try {
+          return new Intl.NumberFormat(undefined, {
+            style: "currency", currency: userCurrency, minimumFractionDigits: 0, maximumFractionDigits: 0,
+          }).format(n);
+        } catch {
+          return `${userCurrency} ${n.toFixed(0)}`;
+        }
+      };
 
       if (!groqKey) {
         await sendWhatsAppReply(
@@ -1689,7 +1690,9 @@ Deno.serve(async (req: Request) => {
                 period.to,
                 formatPrefilled,
                 WHATSAPP_PHONE_NUMBER_ID,
-                WHATSAPP_TOKEN
+                WHATSAPP_TOKEN,
+                formatCurrencyUser,
+                userCurrency
               );
               await clearExportState(supabase, senderPhone);
             } else {
@@ -1731,7 +1734,9 @@ Deno.serve(async (req: Request) => {
               exportState.date_to!,
               formatChoice,
               WHATSAPP_PHONE_NUMBER_ID,
-              WHATSAPP_TOKEN
+              WHATSAPP_TOKEN,
+              formatCurrencyUser,
+              userCurrency
             );
             await clearExportState(supabase, senderPhone);
           } else {
@@ -1767,7 +1772,9 @@ Deno.serve(async (req: Request) => {
             parsed.end_date!,
             parsed.format!,
             WHATSAPP_PHONE_NUMBER_ID,
-            WHATSAPP_TOKEN
+            WHATSAPP_TOKEN,
+            formatCurrencyUser,
+            userCurrency
           );
           return new Response("OK", { status: 200 });
         }
@@ -1835,11 +1842,11 @@ Deno.serve(async (req: Request) => {
         } else {
           const total = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
           const lines = todayExpenses.map(
-            (e) => `• ${e.description} — ${formatINR(e.amount)}`
+            (e) => `• ${e.description} — ${formatCurrencyUser(e.amount)}`
           );
           await sendWhatsAppReply(
             senderPhone,
-            `*Today's Expenses*\n\n${lines.join("\n")}\n\n*Total: ${formatINR(total)}*`,
+            `*Today's Expenses*\n\n${lines.join("\n")}\n\n*Total: ${formatCurrencyUser(total)}*`,
             WHATSAPP_PHONE_NUMBER_ID,
             WHATSAPP_TOKEN
           );
@@ -1889,7 +1896,7 @@ Deno.serve(async (req: Request) => {
             .sort((a, b) => b[1] - a[1])
             .map(
               ([cat, amt]) =>
-                `${categoryEmoji[cat] || "•"} ${cat}: ${formatINR(amt)}`
+                `${categoryEmoji[cat] || "•"} ${cat}: ${formatCurrencyUser(amt)}`
             )
             .join("\n");
 
@@ -1897,7 +1904,7 @@ Deno.serve(async (req: Request) => {
 
           await sendWhatsAppReply(
             senderPhone,
-            `*${monthName} Summary*\n\n${breakdown}\n\n*Total: ${formatINR(total)}*\n${monthExpenses.length} transactions`,
+            `*${monthName} Summary*\n\n${breakdown}\n\n*Total: ${formatCurrencyUser(total)}*\n${monthExpenses.length} transactions`,
             WHATSAPP_PHONE_NUMBER_ID,
             WHATSAPP_TOKEN
           );
@@ -1926,7 +1933,8 @@ Deno.serve(async (req: Request) => {
             messageText,
             userId,
             groqKey,
-            supabase
+            supabase,
+            formatCurrencyUser
           );
           await sendWhatsAppReply(
             senderPhone,
@@ -1953,7 +1961,8 @@ Deno.serve(async (req: Request) => {
             messageText,
             userId,
             groqKey,
-            supabase
+            supabase,
+            formatCurrencyUser
           );
           await sendWhatsAppReply(
             senderPhone,
@@ -2029,13 +2038,13 @@ Deno.serve(async (req: Request) => {
         0
       );
       const lines = inserted.map(
-        (e: any) => `✅ ${e.description} — ${formatINR(e.amount)}`
+        (e: any) => `✅ ${e.description} — ${formatCurrencyUser(e.amount)}`
       );
       const voiceTag = message.type === "audio" ? "🎙️ " : "";
       const replyText =
         inserted.length === 1
           ? `${voiceTag}${lines[0]}\n\nAdded to your expenses!`
-          : `${voiceTag}*Added ${inserted.length} expenses:*\n\n${lines.join("\n")}\n\n*Total: ${formatINR(total)}*`;
+          : `${voiceTag}*Added ${inserted.length} expenses:*\n\n${lines.join("\n")}\n\n*Total: ${formatCurrencyUser(total)}*`;
 
       console.log("[webhook] Success: inserted", inserted?.length ?? 0, "expenses, sending confirmation");
       await sendWhatsAppReply(

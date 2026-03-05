@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCurrency } from "@/context/CurrencyContext";
 import { Button } from "@/components/ui/button";
 import { Mic, Plus, Upload, FileText, Check, X, Pencil } from "lucide-react";
 import {
@@ -48,6 +49,7 @@ export function HomePage({
   const [lastImageUrl, setLastImageUrl] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [countdown, setCountdown] = useState(5);
+  const { formatAmount } = useCurrency();
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -352,7 +354,7 @@ export function HomePage({
                     ) : (
                       <>
                         <span className="font-semibold text-lg min-w-20">
-                          ₹{expense.amount}
+                          {formatAmount(expense.amount)}
                         </span>
                         <span className="px-3 py-1 bg-primary/10 rounded-full text-sm capitalize min-w-28 text-center">
                           {expense.category}

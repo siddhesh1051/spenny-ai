@@ -36,12 +36,6 @@ const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const TEXT_MODEL = "llama-3.3-70b-versatile";
 
-function formatINR(n: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(n);
-}
-
 async function groqJSON<T>(prompt: string, key: string, temp = 0.7, tokens = 600): Promise<T | null> {
   try {
     const res = await fetch(GROQ_URL, {
@@ -102,16 +96,27 @@ Deno.serve(async (req: Request) => {
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  // ── Get user's Groq key ──
+  // ── Get user's Groq key + currency preference ──
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const { data: profile } = await db
     .from("profiles")
-    .select("groq_api_key")
+    .select("groq_api_key, currency")
     .eq("id", user.id)
     .single();
 
   const groqKey = profile?.groq_api_key || SERVER_GROQ_KEY;
   if (!groqKey) return json({ error: "No API key configured" }, 400);
+
+  const userCurrency: string = profile?.currency || "INR";
+  function formatCurrency(n: number): string {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency", currency: userCurrency, minimumFractionDigits: 0, maximumFractionDigits: 0,
+      }).format(n);
+    } catch {
+      return `${userCurrency} ${n.toFixed(0)}`;
+    }
+  }
 
   // ── Parse multipart form ──
   let formData: FormData;
@@ -149,7 +154,7 @@ Deno.serve(async (req: Request) => {
   const extractionPrompt = `You are an expense extraction AI. Extract ALL transactions from this receipt or payment screenshot.
 
 Today's date: ${today}
-Currency: Assume Indian Rupees (₹ / INR) unless another currency is clearly visible.
+Currency: The user's preferred currency is ${userCurrency}. Assume that currency unless another currency is clearly visible on the receipt.
 
 CATEGORIES — use EXACTLY one of these:
 - food: restaurants, cafes, Swiggy, Zomato, takeout, snacks, delivery
@@ -296,7 +301,7 @@ Return ONLY a valid JSON array — no markdown, no explanation:
   const total = rows.reduce((s: number, e: { amount: number }) => s + e.amount, 0);
   const count = rows.length;
 
-  console.log(`[extract-receipt] Logged ${count} expenses, total ₹${total}`);
+  console.log(`[extract-receipt] Logged ${count} expenses, total ${formatCurrency(total)}`);
 
   const collectionNode = {
     kind: "collection",
@@ -306,16 +311,16 @@ Return ONLY a valid JSON array — no markdown, no explanation:
       id: r.id,
       label: r.description,
       badge: r.category,
-      value: formatINR(r.amount),
+      value: formatCurrency(r.amount),
     })),
   };
 
   const expenseSummary = rows.map((r: { description: string; category: string; amount: number }) =>
-    `- ${r.description} (${r.category}): ${formatINR(r.amount)}`
+    `- ${r.description} (${r.category}): ${formatCurrency(r.amount)}`
   ).join("\n");
 
   const aiLayout = await groqJSON<{ layout: unknown }>(
-    `You are Spenny AI. The user just scanned a receipt and ${count} expense${count !== 1 ? "s were" : " was"} extracted, totalling ${formatINR(total)}.
+    `You are Spenny AI. The user just scanned a receipt and ${count} expense${count !== 1 ? "s were" : " was"} extracted, totalling ${formatCurrency(total)}.
 
 Extracted expenses:
 ${expenseSummary}
