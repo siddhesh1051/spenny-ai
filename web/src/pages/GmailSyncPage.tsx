@@ -8,6 +8,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Mail, RefreshCw, CheckCircle2, AlertCircle, Info, Unlink } from "lucide-react";
 
@@ -94,8 +105,38 @@ export default function GmailSyncPage() {
   };
 
   const handleDisconnectGmail = async () => {
-    // Re-auth without gmail scope to remove it
-    toast.info("To disconnect Gmail, re-sign in with email/password or re-authenticate without Gmail permissions.");
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+
+      // Clear the sync state from DB so next connect starts fresh
+      if (userId) {
+        await supabase.from("gmail_sync_state").delete().eq("user_id", userId);
+      }
+
+      // Sign out completely, then sign back in with basic Google scopes only
+      // This drops the provider_token with gmail scope
+      await supabase.auth.signOut();
+
+      // Re-authenticate with Google but without gmail scope
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          scopes: "email profile",
+          queryParams: {
+            prompt: "select_account",
+          },
+          redirectTo: `${window.location.origin}/gmail-sync`,
+        },
+      });
+
+      setHasGmailAccess(false);
+      setSyncState(null);
+      setSyncResult(null);
+      toast.success("Gmail disconnected successfully.");
+    } catch (error: any) {
+      toast.error(`Failed to disconnect: ${error.message}`);
+    }
   };
 
   const handleSync = async () => {
@@ -210,13 +251,31 @@ export default function GmailSyncPage() {
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 Gmail connected
               </div>
-              <button
-                onClick={handleDisconnectGmail}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Unlink className="h-3.5 w-3.5" />
-                Disconnect
-              </button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
+                    <Unlink className="h-3.5 w-3.5" />
+                    Disconnect
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Disconnect Gmail?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will revoke Spenny's access to your Gmail and clear your sync history. You'll need to reconnect to sync emails again. Your already-imported expenses won't be deleted.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDisconnectGmail}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Disconnect
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-600 dark:text-yellow-400">
