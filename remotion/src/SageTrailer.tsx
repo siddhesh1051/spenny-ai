@@ -1,4 +1,5 @@
 import { useVideoConfig, useCurrentFrame } from "remotion";
+import { DESIGN_WIDTH, DESIGN_HEIGHT } from "./useDesignConfig";
 import { TransitionSeries, linearTiming, springTiming } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
@@ -67,10 +68,9 @@ const Grain: React.FC<{ width: number; height: number }> = ({ width, height }) =
   );
 };
 
-// Scenes are authored at 1280×720. We scale the entire canvas so pixel sizes
-// stay identical and transitions/slides work correctly at any output resolution.
-const DESIGN_WIDTH = 1280;
-const DESIGN_HEIGHT = 720;
+// Scenes are authored at DESIGN_WIDTH×DESIGN_HEIGHT (1280×720).
+// We scale the entire canvas so pixel sizes stay identical and
+// transitions/slides work correctly at any output resolution.
 
 export const SageTrailer: React.FC = () => {
   const { width, height } = useVideoConfig();

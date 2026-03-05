@@ -1,4 +1,5 @@
 import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing } from "remotion";
+import { useDesignConfig } from "../useDesignConfig";
 import { loadFont } from "@remotion/google-fonts/FunnelDisplay";
 import { MicIcon, ImageIcon, SparklesIcon, MessageCircleIcon, SmartphoneIcon, BanknoteIcon } from "../Icons";
 
@@ -81,7 +82,8 @@ const FeaturePill: React.FC<{
 
 export const OutroScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { width, height } = useDesignConfig();
 
   // Scene: 5.5s = 165 frames
   const sceneOpacity = interpolate(frame, [0, fps * 0.4], [0, 1], { extrapolateRight: "clamp" });

@@ -6,6 +6,7 @@ import {
   Easing,
   Sequence,
 } from "remotion";
+import { useDesignConfig } from "../useDesignConfig";
 import { loadFont } from "@remotion/google-fonts/FunnelDisplay";
 
 const { fontFamily } = loadFont("normal", {
@@ -169,7 +170,8 @@ const RejectionStamp: React.FC<{ frame: number; fps: number; stampFrame: number 
 
 export const FormRejectionScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { width, height } = useDesignConfig();
 
   // Scene fade in
   const sceneOpacity = interpolate(frame, [0, fps * 0.4], [0, 1], {

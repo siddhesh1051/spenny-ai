@@ -16,8 +16,8 @@ export const RemotionRoot: React.FC = () => {
         component={SageTrailer}
         durationInFrames={TOTAL_FRAMES}
         fps={60}
-        width={1280}
-        height={720}
+        width={1920}
+        height={1080}
       />
     </>
   );

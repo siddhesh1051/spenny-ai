@@ -1,4 +1,5 @@
 import { useCurrentFrame, useVideoConfig, interpolate, spring, Easing } from "remotion";
+import { useDesignConfig } from "../useDesignConfig";
 import { loadFont } from "@remotion/google-fonts/FunnelDisplay";
 
 const { fontFamily } = loadFont("normal", {
@@ -69,7 +70,8 @@ const Particle: React.FC<{ frame: number; fps: number; x: number; delay: number;
 
 export const IntroScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { width, height } = useDesignConfig();
 
   // — Timeline —
   // 0–0.3s: background fades in

@@ -6,6 +6,7 @@ import {
   Easing,
   Sequence,
 } from "remotion";
+import { useDesignConfig } from "../useDesignConfig";
 import { loadFont } from "@remotion/google-fonts/FunnelDisplay";
 import { MicIcon, FileTextIcon, BarChart2Icon, CheckIcon, BanknoteIcon, PlusIcon } from "../Icons";
 
@@ -337,7 +338,8 @@ const UploadBubble: React.FC<{
 
 export const BankStatementScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { width, height } = useDesignConfig();
 
   // Scene: 7.5s = 225 frames
   const sceneOpacity = interpolate(frame, [0, fps * 0.35], [0, 1], { extrapolateRight: "clamp" });

@@ -6,6 +6,7 @@ import {
   Easing,
   Sequence,
 } from "remotion";
+import { useDesignConfig } from "../useDesignConfig";
 import { loadFont } from "@remotion/google-fonts/FunnelDisplay";
 import { MicIcon, XIcon, CheckIcon } from "../Icons";
 
@@ -268,7 +269,8 @@ const ExpenseItem: React.FC<{
 
 export const VoiceScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { width, height } = useDesignConfig();
 
   // Scene: 7.0s = 210 frames
   const sceneOpacity = interpolate(frame, [0, fps * 0.35], [0, 1], { extrapolateRight: "clamp" });
