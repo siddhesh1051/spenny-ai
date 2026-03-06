@@ -39,6 +39,9 @@ interface SyncResult {
   gmail_email: string | null;
   message: string;
   inserted_ids?: string[];
+  processed_message_ids?: string[];
+  previous_synced_message_ids?: string[];
+  previous_last_synced_at?: string | null;
 }
 
 interface SyncState {
@@ -63,6 +66,11 @@ export default function GmailSyncPage() {
   const undoRafRef = useRef<number | null>(null);
   const undoStartRef = useRef<number>(0);
   const insertedIdsRef = useRef<string[]>([]);
+  // Snapshot of sync state before the last sync — used to fully revert on undo
+  const undoSyncMetaRef = useRef<{
+    previousSyncedMessageIds: string[];
+    previousLastSyncedAt: string | null;
+  } | null>(null);
 
   const connected = !!(syncState?.connected && syncState?.gmail_email);
 
@@ -124,13 +132,35 @@ export default function GmailSyncPage() {
     cancelUndoCountdown();
     setIsUndoing(true);
     try {
-      const { error } = await supabase
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+
+      // 1. Delete the inserted expenses
+      const { error: delError } = await supabase
         .from("expenses")
         .delete()
         .in("id", ids);
-      if (error) throw error;
+      if (delError) throw delError;
+
+      // 2. Revert the gmail_sync_state to what it was BEFORE this sync
+      const meta = undoSyncMetaRef.current;
+      if (userId && meta) {
+        await supabase.from("gmail_sync_state").upsert({
+          user_id: userId,
+          last_synced_at: meta.previousLastSyncedAt,
+          synced_message_ids: meta.previousSyncedMessageIds,
+        });
+        // Update local state to reflect the revert
+        setSyncState((s) =>
+          s
+            ? { ...s, last_synced_at: meta.previousLastSyncedAt }
+            : s
+        );
+      }
+
       setSyncResult(null);
-      toast.success(`Removed ${ids.length} synced expense${ids.length > 1 ? "s" : ""}.`);
+      undoSyncMetaRef.current = null;
+      toast.success(`Removed ${ids.length} synced expense${ids.length > 1 ? "s" : ""}. Sync rolled back.`);
     } catch (e: any) {
       toast.error(`Undo failed: ${e.message}`);
     } finally {
@@ -289,6 +319,13 @@ export default function GmailSyncPage() {
 
         const ids = recentRows?.map((r: { id: string }) => r.id) ?? [];
         setSyncResult({ ...result, inserted_ids: ids });
+
+        // Store pre-sync state snapshot so undo can fully revert
+        undoSyncMetaRef.current = {
+          previousSyncedMessageIds: result.previous_synced_message_ids ?? [],
+          previousLastSyncedAt: result.previous_last_synced_at ?? null,
+        };
+
         startUndoCountdown(ids);
         toast.success(result.message);
       } else {

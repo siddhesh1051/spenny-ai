@@ -424,6 +424,10 @@ Deno.serve(async (req) => {
       skipped,
       total_processed: processedIds.length,
       gmail_email: gmailEmail,
+      // Return the IDs added this session so the client can revert them on undo
+      processed_message_ids: processedIds,
+      previous_synced_message_ids: Array.from(syncedMessageIds),
+      previous_last_synced_at: lastSyncedAt,
       message:
         insertedCount > 0
           ? `Synced ${insertedCount} new expense${insertedCount > 1 ? "s" : ""} from your bank emails!`
