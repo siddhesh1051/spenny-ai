@@ -31,6 +31,7 @@ import {
   Trash2,
   CalendarDays,
   Clock,
+  X,
 } from "lucide-react";
 
 const UNDO_SECONDS = 10;
@@ -180,6 +181,8 @@ export default function GmailSyncPage() {
     return d.toISOString().split("T")[0]; // YYYY-MM-DD
   })();
   const [sinceDate, setSinceDate] = useState(defaultSinceDate);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const handleDeleteAllSynced = async () => {
     setIsDeletingAll(true);
@@ -321,6 +324,20 @@ export default function GmailSyncPage() {
       toast.error(`Failed to disconnect: ${error.message}`);
     } finally {
       setIsDisconnecting(false);
+    }
+  };
+
+  const handleSyncConfirmed = async () => {
+    setShowSyncModal(false);
+    await handleSync();
+  };
+
+  const handleSyncClick = () => {
+    const isFirstSync = !syncState?.last_synced_at;
+    if (isFirstSync) {
+      setShowSyncModal(true);
+    } else {
+      handleSync();
     }
   };
 
@@ -496,31 +513,6 @@ export default function GmailSyncPage() {
             </div>
           )}
 
-          {/* First-sync date picker — only shown before first sync */}
-          {connected && !syncState?.last_synced_at && (
-            <div className="rounded-lg border border-dashed px-4 py-3 space-y-2">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
-                Choose start date
-                <span className="ml-1 text-[10px] font-normal text-muted-foreground bg-muted rounded px-1.5 py-0.5">
-                  First sync only
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="date"
-                  value={sinceDate}
-                  max={new Date().toISOString().split("T")[0]}
-                  onChange={(e) => setSinceDate(e.target.value)}
-                  className="text-sm bg-background border rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                <p className="text-xs text-muted-foreground">
-                  All bank emails from this date will be processed. Larger ranges take longer — a 6-month range typically takes 1–3 min.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Action buttons */}
           <div className="flex items-center gap-3 flex-wrap">
             {!connected ? (
@@ -531,14 +523,26 @@ export default function GmailSyncPage() {
             ) : (
               <>
                 <div className="flex flex-col gap-1">
-                  <Button onClick={handleSync} disabled={isSyncing} className="gap-2">
-                    <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-                    {isSyncing ? "Processing emails…" : "Sync Now"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleSyncClick} disabled={isSyncing} className="gap-2">
+                      <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                      {isSyncing ? "Processing emails…" : "Sync Now"}
+                    </Button>
+                    {/* ⓘ info button — only on subsequent syncs */}
+                    {syncState?.last_synced_at && (
+                      <button
+                        onClick={() => setShowInfoModal(true)}
+                        className="h-7 w-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="About Gmail Sync"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                   {isSyncing && (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      This may take a minute or two for large ranges — hang tight
+                      This may take a minute or two — hang tight
                     </span>
                   )}
                 </div>
@@ -643,6 +647,116 @@ export default function GmailSyncPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* ── First-sync modal ─────────────────────────────────────────────── */}
+      {showSyncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-background border shadow-xl">
+            <div className="flex items-start justify-between p-5 pb-3">
+              <div>
+                <h2 className="text-base font-semibold">First Sync Setup</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Choose how far back to import bank emails</p>
+              </div>
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-5 pb-4 space-y-4">
+              {/* Date picker */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  Start from date
+                </label>
+                <input
+                  type="date"
+                  value={sinceDate}
+                  max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setSinceDate(e.target.value)}
+                  className="w-full text-sm bg-background border rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  Larger ranges take longer — 6 months ≈ 1–3 min, 1 year ≈ 3–6 min
+                </p>
+              </div>
+
+              {/* Bank email sources */}
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Bank emails we scan</p>
+                <div className="rounded-lg bg-muted/50 border p-3">
+                  <ul className="text-xs text-muted-foreground space-y-1 columns-2">
+                    {[
+                      "HDFC Bank", "ICICI Bank", "SBI", "Axis Bank",
+                      "Kotak Bank", "Yes Bank", "IndusInd", "IDFC First",
+                      "Bank of Baroda", "PNB", "Canara Bank", "Union Bank",
+                      "Paytm Payments", "PhonePe", "Google Pay", "Amazon Pay",
+                      "UPI alerts", "NEFT / IMPS", "Credit card debits", "Wallet debits",
+                    ].map((b) => (
+                      <li key={b} className="flex items-center gap-1.5">
+                        <span className="h-1 w-1 rounded-full bg-muted-foreground/50 shrink-0" />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Only debit/payment alerts are imported — credits, refunds, and OTPs are ignored.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-1">
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="text-sm px-4 py-2 rounded-lg border hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <Button onClick={handleSyncConfirmed} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Start Sync
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Info modal (subsequent syncs) ────────────────────────────────── */}
+      {showInfoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-background border shadow-xl">
+            <div className="flex items-start justify-between p-5 pb-3">
+              <h2 className="text-base font-semibold">About Gmail Sync</h2>
+              <button
+                onClick={() => setShowInfoModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-5 pb-5 space-y-3">
+              <ul className="text-sm text-muted-foreground space-y-2">
+                <li className="flex gap-2"><span className="shrink-0 mt-0.5 text-muted-foreground">•</span>Only new emails since your last sync are fetched</li>
+                <li className="flex gap-2"><span className="shrink-0 mt-0.5 text-muted-foreground">•</span>Every email is processed once — no duplicates</li>
+                <li className="flex gap-2"><span className="shrink-0 mt-0.5 text-muted-foreground">•</span>Only debit/payment alerts imported; credits and refunds are skipped</li>
+                <li className="flex gap-2"><span className="shrink-0 mt-0.5 text-muted-foreground">•</span>Covers HDFC, ICICI, SBI, Axis, Kotak, Paytm, UPI, NEFT, IMPS and more</li>
+                <li className="flex gap-2"><span className="shrink-0 mt-0.5 text-muted-foreground">•</span>Email content is never stored — only the extracted expense data is saved</li>
+              </ul>
+              <button
+                onClick={() => setShowInfoModal(false)}
+                className="w-full text-sm py-2 rounded-lg border hover:bg-muted transition-colors mt-1"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
