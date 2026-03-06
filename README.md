@@ -15,6 +15,7 @@
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
 - [WhatsApp Integration (Optional)](#whatsapp-integration-optional)
+- [Gmail Auto-Sync (Optional)](#gmail-auto-sync-optional)
 - [PWA & Share Target](#pwa--share-target)
 - [License](#license)
 
@@ -55,6 +56,7 @@ This is **Generative UI** — the AI is the layout engine.
 ### Integrations
 
 - **WhatsApp** — Link your number (OTP verification). Message the bot to log expenses, ask questions, or request CSV/PDF exports directly in chat.
+- **Gmail Auto-Sync** — Connect your Gmail account (read-only) and import expenses directly from bank and payment alert emails. AI extracts amount, merchant, and category from HDFC, ICICI, SBI, Axis, Kotak, Paytm, UPI, NEFT, IMPS, and more. First sync lets you pick a start date and pulls all historical emails from that date. Subsequent syncs are incremental. Duplicate-safe, fully undoable for 10 seconds after sync, with a "delete all synced" option.
 - **API Keys** — Create and manage programmatic API keys (e.g. for MCP integrations).
 - **PWA** — Installable, with share target for images.
 
@@ -67,7 +69,7 @@ This is **Generative UI** — the AI is the layout engine.
 | **Frontend** | React 19, TypeScript, Vite 6, React Router 7 |
 | **Styling** | Tailwind CSS 4, shadcn/ui (Radix UI primitives), Lucide icons |
 | **Backend / DB** | Supabase (Auth, Postgres, Edge Functions) |
-| **AI — text** | Groq `llama-3.3-70b-versatile` — intent classification, expense extraction, query building, UI JSON generation |
+| **AI — text** | Groq `llama-3.3-70b-versatile` — intent classification, expense extraction, query building, UI JSON generation; `llama-3.1-8b-instant` — Gmail email classification |
 | **AI — vision** | Groq `meta-llama/llama-4-scout-17b-16e-instruct` — receipt and PDF extraction |
 | **AI — audio** | OpenAI Whisper (via Supabase Edge Function `transcribe-audio`) |
 | **Charts** | Recharts (inside `@spenny/ui-renderer`) |
@@ -176,6 +178,14 @@ Upload a photo of any receipt, payment screenshot, or bank SMS. Sage extracts an
 - *"How much did I spend last month?"* → Summary reply.
 - *"Export last 30 days as CSV"* → Sends file in chat.
 
+### Gmail Auto-Sync
+1. Go to **Gmail Sync** in the sidebar.
+2. Click **Connect Gmail** — you'll be redirected to Google OAuth (read-only scope).
+3. On first sync, click **Sync Now** to open the setup modal — pick a start date and review which bank emails are scanned.
+4. Click **Start Sync**. Expenses are imported, categorised by AI, and appear instantly in Transactions.
+5. Use **Undo all** within 10 seconds to roll back the entire sync if needed.
+6. Subsequent syncs are incremental — only new emails since the last sync are processed.
+
 ---
 
 ## Getting Started
@@ -212,13 +222,20 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 ### 3. Supabase setup
 
 - Enable Email and (optional) Google auth in **Authentication → Providers**.
-- Create tables: `profiles`, `expenses`, `api_keys`. Apply RLS policies.
+- Create tables: `profiles`, `expenses`, `api_keys`, `gmail_sync_state`. Apply RLS policies.
+- Run migrations:
+
+```bash
+npx supabase db push
+```
+
 - Deploy Edge Functions:
 
 ```bash
 npx supabase functions deploy sage-chat --no-verify-jwt
 npx supabase functions deploy extract-receipt --no-verify-jwt
 npx supabase functions deploy transcribe-audio --no-verify-jwt
+npx supabase functions deploy sync-gmail-expenses
 ```
 
 - Set Edge Function secrets in Supabase dashboard:
@@ -255,6 +272,15 @@ Open `http://localhost:5173`. Sign up, add your Groq API key in **Settings**, th
 | `SUPABASE_ANON_KEY` | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (for DB writes in Edge Functions) |
 
+**Gmail Sync — Google Cloud setup**
+
+The Gmail sync feature requires a Google Cloud project with:
+1. **OAuth 2.0 credentials** — add your Supabase project URL as an authorised redirect URI in **APIs & Services → Credentials**.
+2. **Gmail API** enabled — visit **APIs & Services → Library** and enable the Gmail API.
+3. **OAuth consent screen** — add the `gmail.readonly` scope. During testing, add users via **Test users** (production requires Google verification).
+
+These are configured in [Google Cloud Console](https://console.cloud.google.com), not in Supabase.
+
 ---
 
 ## Project Structure
@@ -285,6 +311,7 @@ spenny-ai/
 │       │   ├── SettingsPage.tsx
 │       │   ├── ApiKeysPage.tsx
 │       │   ├── WhatsAppIntegrationPage.tsx
+│       │   ├── GmailSyncPage.tsx  # Gmail auto-sync — connect, date picker, undo
 │       │   ├── ShareTargetPage.tsx
 │       │   └── deprecated/
 │       │       └── HomePage.tsx   # Legacy home (voice/text/image input) — kept but not linked
@@ -301,7 +328,8 @@ spenny-ai/
 │       ├── transcribe-audio/      # Whisper transcription
 │       ├── whatsapp-webhook/      # WhatsApp bot
 │       ├── send-whatsapp-otp/
-│       └── verify-whatsapp-otp/
+│       ├── verify-whatsapp-otp/
+│       └── sync-gmail-expenses/   # Gmail sync — paginated fetch, parallel AI classification, dedup
 ├── app/                           # React Native / Expo mobile app
 └── mcp-server/                    # MCP server for AI tool integrations
 ```
@@ -319,6 +347,55 @@ spenny-ai/
    - `GROQ_API_KEY`
 3. **Deploy** `whatsapp-webhook`, `send-whatsapp-otp`, `verify-whatsapp-otp`.
 4. **App** — Users link their number in **WhatsApp Integration** via OTP.
+
+---
+
+## Gmail Auto-Sync (Optional)
+
+### How it works
+
+The `sync-gmail-expenses` Edge Function runs on demand when the user clicks **Sync Now**:
+
+1. **Fetches all matching emails** from Gmail using a date-filtered query across bank senders and transactional subjects (HDFC, ICICI, SBI, Axis, Kotak, Paytm, UPI, NEFT, IMPS, etc.). Paginates through all results.
+2. **Deduplicates** against `synced_message_ids` stored in `gmail_sync_state` — previously processed emails are skipped.
+3. **Fetches full email details in parallel** (batches of 25 concurrent requests).
+4. **Classifies each email with AI in parallel** (batches of 15 concurrent Groq calls using `llama-3.1-8b-instant`). Only debit/payment alerts are extracted; credits, refunds, and OTPs are ignored.
+5. **Inserts all new expenses** in a single DB batch.
+6. **Updates sync state** — `last_synced_at` and `synced_message_ids` — so the next sync is incremental.
+
+Email content is never stored. Only the extracted fields (amount, category, description, date) are saved.
+
+### Database
+
+| Table | Purpose |
+|---|---|
+| `gmail_sync_state` | Per-user sync state: `last_synced_at`, `synced_message_ids`, `gmail_email` |
+| `expenses.gmail_message_id` | Nullable column used for per-row deduplication and bulk undo/delete |
+
+### Setup
+
+1. Enable Google as an OAuth provider in **Supabase → Authentication → Providers**.  
+   Add the `gmail.readonly` scope and `access_type=offline` in the provider config.
+2. In [Google Cloud Console](https://console.cloud.google.com):
+   - Enable the **Gmail API**.
+   - Configure the **OAuth consent screen** with `gmail.readonly` scope.
+   - Add test users (or complete Google verification for production).
+3. Deploy the Edge Function:
+   ```bash
+   npx supabase functions deploy sync-gmail-expenses
+   ```
+4. Run migrations to create `gmail_sync_state` and add `gmail_message_id` to `expenses`:
+   ```bash
+   npx supabase db push
+   ```
+
+### UI behaviour
+
+- **First sync** — clicking Sync Now opens a modal: choose start date, review which bank email sources are scanned, then confirm. Supports any date range (up to 500 emails per invocation; syncing again continues from where it left off).
+- **Subsequent syncs** — immediate, incremental. Only emails after `last_synced_at` are fetched.
+- **Undo** — after each sync, a 10-second countdown with a draining progress bar lets you roll back all inserted expenses and restore the previous sync state.
+- **Delete all synced** — permanently removes all Gmail-imported expenses and resets sync history.
+- **Estimated time** — shown in the modal and while syncing. Typical times: 1–2 min for 6 months of emails, 3–5 min for 1 year.
 
 ---
 
