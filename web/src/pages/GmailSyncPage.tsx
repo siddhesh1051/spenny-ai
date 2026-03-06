@@ -28,6 +28,7 @@ import {
   Info,
   Unlink,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 const UNDO_SECONDS = 10;
@@ -165,6 +166,39 @@ export default function GmailSyncPage() {
       toast.error(`Undo failed: ${e.message}`);
     } finally {
       setIsUndoing(false);
+    }
+  };
+
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+
+  const handleDeleteAllSynced = async () => {
+    setIsDeletingAll(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (!userId) throw new Error("Not signed in");
+
+      const { error } = await supabase
+        .from("expenses")
+        .delete()
+        .eq("user_id", userId)
+        .not("gmail_message_id", "is", null);
+      if (error) throw error;
+
+      // Also reset the sync state so emails can be re-imported
+      await supabase.from("gmail_sync_state").upsert({
+        user_id: userId,
+        last_synced_at: null,
+        synced_message_ids: [],
+      });
+      setSyncState((s) => s ? { ...s, last_synced_at: null } : s);
+      setSyncResult(null);
+      cancelUndoCountdown();
+      toast.success("All Gmail-synced expenses deleted.");
+    } catch (e: any) {
+      toast.error(`Delete failed: ${e.message}`);
+    } finally {
+      setIsDeletingAll(false);
     }
   };
 
@@ -448,17 +482,48 @@ export default function GmailSyncPage() {
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             {!connected ? (
               <Button onClick={handleConnectGmail} disabled={isConnecting} className="gap-2">
                 <Mail className="h-4 w-4" />
                 {isConnecting ? "Connecting..." : "Connect Gmail"}
               </Button>
             ) : (
-              <Button onClick={handleSync} disabled={isSyncing} className="gap-2">
-                <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-                {isSyncing ? "Syncing emails..." : "Sync Now"}
-              </Button>
+              <>
+                <Button onClick={handleSync} disabled={isSyncing} className="gap-2">
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                  {isSyncing ? "Syncing emails..." : "Sync Now"}
+                </Button>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      disabled={isDeletingAll || isSyncing}
+                      className="flex items-center gap-1.5 text-xs text-destructive/70 hover:text-destructive transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete all synced expenses
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete all Gmail-synced expenses?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete every expense imported from Gmail and reset the sync history, so they can be re-imported on next sync. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAllSynced}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {isDeletingAll ? "Deleting..." : "Delete all"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
             )}
           </div>
         </CardContent>
