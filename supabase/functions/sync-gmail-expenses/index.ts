@@ -222,6 +222,19 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "gmail_access_token required" }, 400);
     }
 
+    // ── Fetch Gmail account email for display in UI ───────────────────────
+    let gmailEmail: string | null = null;
+    try {
+      const gmailProfileRes = await fetch(
+        "https://www.googleapis.com/gmail/v1/users/me/profile",
+        { headers: { Authorization: `Bearer ${gmailAccessToken}` } }
+      );
+      if (gmailProfileRes.ok) {
+        const gp = await gmailProfileRes.json();
+        gmailEmail = gp.emailAddress ?? null;
+      }
+    } catch { /* non-fatal */ }
+
     // ── Get last sync state ────────────────────────────────────────────────
     const { data: syncState } = await db
       .from("gmail_sync_state")
@@ -269,9 +282,17 @@ Deno.serve(async (req) => {
     const messages = listData.messages ?? [];
 
     if (messages.length === 0) {
+      await db.from("gmail_sync_state").upsert({
+        user_id: userId,
+        last_synced_at: new Date().toISOString(),
+        synced_message_ids: Array.from(syncedMessageIds).slice(-1000),
+        ...(gmailEmail ? { gmail_email: gmailEmail } : {}),
+      });
       return jsonResponse({
         inserted: 0,
         skipped: 0,
+        total_processed: 0,
+        gmail_email: gmailEmail,
         message: "No new bank emails found since last sync.",
       });
     }
@@ -280,9 +301,17 @@ Deno.serve(async (req) => {
     const newMessages = messages.filter((m) => !syncedMessageIds.has(m.id));
 
     if (newMessages.length === 0) {
+      await db.from("gmail_sync_state").upsert({
+        user_id: userId,
+        last_synced_at: new Date().toISOString(),
+        synced_message_ids: Array.from(syncedMessageIds).slice(-1000),
+        ...(gmailEmail ? { gmail_email: gmailEmail } : {}),
+      });
       return jsonResponse({
         inserted: 0,
         skipped: messages.length,
+        total_processed: 0,
+        gmail_email: gmailEmail,
         message: "All emails already synced. No new expenses.",
       });
     }
@@ -358,6 +387,7 @@ Deno.serve(async (req) => {
       user_id: userId,
       last_synced_at: new Date().toISOString(),
       synced_message_ids: trimmedIds,
+      ...(gmailEmail ? { gmail_email: gmailEmail } : {}),
     });
 
     const skipped = processedIds.length - expensesToInsert.length;
@@ -366,6 +396,7 @@ Deno.serve(async (req) => {
       inserted: insertedCount,
       skipped,
       total_processed: processedIds.length,
+      gmail_email: gmailEmail,
       message:
         insertedCount > 0
           ? `Synced ${insertedCount} new expense${insertedCount > 1 ? "s" : ""} from your bank emails!`

@@ -20,122 +20,162 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Mail, RefreshCw, CheckCircle2, AlertCircle, Info, Unlink } from "lucide-react";
+import {
+  Mail,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  Unlink,
+} from "lucide-react";
 
 interface SyncResult {
   inserted: number;
   skipped: number;
   total_processed: number;
+  gmail_email: string | null;
   message: string;
 }
 
 interface SyncState {
   last_synced_at: string | null;
+  gmail_email: string | null;
+  // connected = a DB row exists with a gmail_email stored
+  connected: boolean;
 }
 
 export default function GmailSyncPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncState, setSyncState] = useState<SyncState | null>(null);
-  const [hasGmailAccess, setHasGmailAccess] = useState(false);
   const [isLoadingState, setIsLoadingState] = useState(true);
 
-  const checkGmailAccess = useCallback(async () => {
+  // Source of truth: DB row existence + gmail_email stored
+  const connected = !!(syncState?.connected && syncState?.gmail_email);
+
+  const loadSyncState = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from("gmail_sync_state")
+      .select("last_synced_at, gmail_email")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    setSyncState(
+      data
+        ? {
+            last_synced_at: data.last_synced_at,
+            gmail_email: data.gmail_email,
+            connected: !!data.gmail_email,
+          }
+        : { last_synced_at: null, gmail_email: null, connected: false }
+    );
+  }, []);
+
+  const checkAndInit = useCallback(async () => {
     setIsLoadingState(true);
     try {
       const { data } = await supabase.auth.getSession();
       const session = data.session;
+      if (!session) { setSyncState(null); return; }
 
-      if (!session) {
-        setHasGmailAccess(false);
-        return;
-      }
+      const isJustConnected = localStorage.getItem("gmail_sync_connecting") === "1";
 
-      // Check if the provider token has gmail scope by trying to list 1 message
-      const providerToken = session.provider_token;
-      if (providerToken) {
-        const testRes = await fetch(
-          "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1",
-          { headers: { Authorization: `Bearer ${providerToken}` } }
-        );
-        setHasGmailAccess(testRes.ok);
-      } else {
-        setHasGmailAccess(false);
-      }
-
-      // Load last sync state
-      const { data: stateData } = await supabase
+      // Load DB state — source of truth for connected status
+      const { data: dbState } = await supabase
         .from("gmail_sync_state")
-        .select("last_synced_at")
+        .select("last_synced_at, gmail_email")
         .eq("user_id", session.user.id)
         .maybeSingle();
 
-      setSyncState(stateData ? { last_synced_at: stateData.last_synced_at } : null);
+      // If just redirected back from Google OAuth, register the Gmail email into DB
+      if (isJustConnected && session.provider_token) {
+        localStorage.removeItem("gmail_sync_connecting");
+        try {
+          const profileRes = await fetch(
+            "https://www.googleapis.com/gmail/v1/users/me/profile",
+            { headers: { Authorization: `Bearer ${session.provider_token}` } }
+          );
+          if (profileRes.ok) {
+            const pd = await profileRes.json();
+            const gmailEmail: string = pd.emailAddress;
+            if (gmailEmail) {
+              await supabase.from("gmail_sync_state").upsert({
+                user_id: session.user.id,
+                gmail_email: gmailEmail,
+                last_synced_at: dbState?.last_synced_at ?? null,
+                synced_message_ids: [],
+              });
+              setSyncState({ last_synced_at: dbState?.last_synced_at ?? null, gmail_email: gmailEmail, connected: true });
+              toast.success(`Gmail connected: ${gmailEmail}`);
+              return;
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      // Normal load: if no DB row → disconnected (don't re-register from provider_token)
+      if (!dbState) {
+        setSyncState({ last_synced_at: null, gmail_email: null, connected: false });
+        return;
+      }
+
+      setSyncState({
+        last_synced_at: dbState.last_synced_at,
+        gmail_email: dbState.gmail_email,
+        connected: !!dbState.gmail_email,
+      });
     } catch {
-      setHasGmailAccess(false);
+      setSyncState(null);
     } finally {
       setIsLoadingState(false);
     }
-  }, []);
+  }, [loadSyncState]);
 
   useEffect(() => {
-    checkGmailAccess();
-  }, [checkGmailAccess]);
+    checkAndInit();
+  }, [checkAndInit]);
 
   const handleConnectGmail = async () => {
     setIsConnecting(true);
     try {
+      // Set a flag so on redirect-back we know to register the Gmail email
+      localStorage.setItem("gmail_sync_connecting", "1");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           scopes: "email profile https://www.googleapis.com/auth/gmail.readonly",
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
+          queryParams: { access_type: "offline", prompt: "consent" },
           redirectTo: `${window.location.origin}/gmail-sync`,
         },
       });
       if (error) throw error;
     } catch (error: any) {
+      localStorage.removeItem("gmail_sync_connecting");
       toast.error(`Failed to connect Gmail: ${error.message}`);
       setIsConnecting(false);
     }
   };
 
   const handleDisconnectGmail = async () => {
+    setIsDisconnecting(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user?.id;
 
-      // Clear the sync state from DB so next connect starts fresh
       if (userId) {
         await supabase.from("gmail_sync_state").delete().eq("user_id", userId);
       }
 
-      // Sign out completely, then sign back in with basic Google scopes only
-      // This drops the provider_token with gmail scope
-      await supabase.auth.signOut();
-
-      // Re-authenticate with Google but without gmail scope
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          scopes: "email profile",
-          queryParams: {
-            prompt: "select_account",
-          },
-          redirectTo: `${window.location.origin}/gmail-sync`,
-        },
-      });
-
-      setHasGmailAccess(false);
-      setSyncState(null);
+      // Update local state immediately — no sign-out needed
+      setSyncState({ last_synced_at: null, gmail_email: null, connected: false });
       setSyncResult(null);
-      toast.success("Gmail disconnected successfully.");
+      toast.success("Gmail disconnected. Your imported expenses are kept.");
     } catch (error: any) {
       toast.error(`Failed to disconnect: ${error.message}`);
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -145,16 +185,12 @@ export default function GmailSyncPage() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData.session;
-
-      if (!session) {
-        toast.error("Please sign in first.");
-        return;
-      }
+      if (!session) { toast.error("Please sign in first."); return; }
 
       const providerToken = session.provider_token;
       if (!providerToken) {
         toast.error("Gmail not connected. Please connect Gmail first.");
-        setHasGmailAccess(false);
+        setSyncState((s) => s ? { ...s, connected: false } : null);
         return;
       }
 
@@ -168,21 +204,11 @@ export default function GmailSyncPage() {
       const result = data as SyncResult;
       setSyncResult(result);
 
-      // Refresh sync state
-      if (session?.user?.id) {
-        const { data: stateData } = await supabase
-          .from("gmail_sync_state")
-          .select("last_synced_at")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-        setSyncState(stateData ? { last_synced_at: stateData.last_synced_at } : null);
-      }
+      // Refresh sync state from DB
+      await loadSyncState(session.user.id);
 
-      if (result.inserted > 0) {
-        toast.success(result.message);
-      } else {
-        toast.info(result.message);
-      }
+      if (result.inserted > 0) toast.success(result.message);
+      else toast.info(result.message);
     } catch (error: any) {
       toast.error(`Sync failed: ${error.message}`);
     } finally {
@@ -190,10 +216,8 @@ export default function GmailSyncPage() {
     }
   };
 
-  const formatDate = (iso: string | null) => {
-    if (!iso) return "Never";
-    return new Date(iso).toLocaleString();
-  };
+  const formatDate = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleString() : "Never";
 
   if (isLoadingState) {
     return (
@@ -203,7 +227,9 @@ export default function GmailSyncPage() {
             <div className="h-6 w-48 bg-muted rounded animate-pulse" />
             <div className="h-4 w-72 bg-muted rounded animate-pulse mt-1" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div className="h-14 w-full bg-muted rounded animate-pulse" />
+            <div className="h-14 w-full bg-muted rounded animate-pulse" />
             <div className="h-10 w-40 bg-muted rounded animate-pulse" />
           </CardContent>
         </Card>
@@ -213,7 +239,6 @@ export default function GmailSyncPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header card */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -229,6 +254,7 @@ export default function GmailSyncPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+
           {/* How it works */}
           <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -244,56 +270,68 @@ export default function GmailSyncPage() {
             </ul>
           </div>
 
-          {/* Connection status */}
-          {hasGmailAccess ? (
-            <div className="flex items-center justify-between rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                Gmail connected
-              </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
-                    <Unlink className="h-3.5 w-3.5" />
-                    Disconnect
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Disconnect Gmail?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will revoke Spenny's access to your Gmail and clear your sync history. You'll need to reconnect to sync emails again. Your already-imported expenses won't be deleted.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleDisconnectGmail}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    >
+          {/* Connection status — single unified block */}
+          {connected ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 space-y-2">
+              {/* Top row: connected label + disconnect */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  Gmail connected
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors">
+                      <Unlink className="h-3.5 w-3.5" />
                       Disconnect
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Disconnect Gmail?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will remove Spenny's Gmail access and clear your sync history.
+                        You'll need to reconnect to sync emails again.
+                        Your already-imported expenses won't be deleted.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDisconnectGmail}
+                        disabled={isDisconnecting}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {isDisconnecting ? "Disconnecting..." : "Disconnect"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+
+              {/* Connected email */}
+              <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+                <Mail className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                <span className="font-medium truncate">{syncState?.gmail_email}</span>
+              </div>
+
+              {/* Last sync */}
+              {syncState?.last_synced_at && (
+                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">
+                  Last synced: {formatDate(syncState.last_synced_at)}
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-600 dark:text-yellow-400">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              Gmail not connected. Sign in with Google to enable email sync.
+              Gmail not connected. Connect your Gmail account to start syncing bank emails.
             </div>
-          )}
-
-          {/* Last sync info */}
-          {syncState?.last_synced_at && (
-            <p className="text-xs text-muted-foreground">
-              Last synced: {formatDate(syncState.last_synced_at)}
-            </p>
           )}
 
           {/* Action buttons */}
           <div className="flex gap-3 flex-wrap">
-            {!hasGmailAccess ? (
+            {!connected ? (
               <Button onClick={handleConnectGmail} disabled={isConnecting} className="gap-2">
                 <Mail className="h-4 w-4" />
                 {isConnecting ? "Connecting..." : "Connect Gmail"}
@@ -313,11 +351,17 @@ export default function GmailSyncPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Sync Results</CardTitle>
+            {syncResult.gmail_email && (
+              <CardDescription className="flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5" />
+                {syncResult.gmail_email}
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <p className="text-2xl font-bold text-primary">{syncResult.inserted}</p>
+                <p className="text-2xl font-bold text-emerald-500">{syncResult.inserted}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Expenses Added</p>
               </div>
               <div className="rounded-lg bg-muted/50 p-3 text-center">
