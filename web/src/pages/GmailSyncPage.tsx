@@ -29,6 +29,8 @@ import {
   Unlink,
   RotateCcw,
   Trash2,
+  CalendarDays,
+  Clock,
 } from "lucide-react";
 
 const UNDO_SECONDS = 10;
@@ -170,6 +172,14 @@ export default function GmailSyncPage() {
   };
 
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+
+  // Default since date = 90 days ago; user can change for first sync
+  const defaultSinceDate = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return d.toISOString().split("T")[0]; // YYYY-MM-DD
+  })();
+  const [sinceDate, setSinceDate] = useState(defaultSinceDate);
 
   const handleDeleteAllSynced = async () => {
     setIsDeletingAll(true);
@@ -330,8 +340,13 @@ export default function GmailSyncPage() {
         return;
       }
 
+      // Pass since_date for first-time syncs; subsequent syncs use last_synced_at from server
+      const isFirstSync = !syncState?.last_synced_at;
       const { data, error } = await supabase.functions.invoke("sync-gmail-expenses", {
-        body: { gmail_access_token: providerToken },
+        body: {
+          gmail_access_token: providerToken,
+          ...(isFirstSync ? { since_date: sinceDate } : {}),
+        },
       });
 
       if (error) throw new Error(error.message);
@@ -422,7 +437,7 @@ export default function GmailSyncPage() {
               <li>Spenny reads bank alert emails (HDFC, ICICI, SBI, Kotak, Axis, Paytm, UPI, etc.)</li>
               <li>AI extracts only debit transactions — credits and refunds are ignored</li>
               <li>Each email is processed once — no duplicates on subsequent syncs</li>
-              <li>First sync covers the last 90 days; subsequent syncs fetch only new emails</li>
+              <li>Choose your start date for the first sync — all matching emails from that date are processed</li>
               <li>Your email content is never stored — only the extracted expense data</li>
             </ul>
           </div>
@@ -481,6 +496,31 @@ export default function GmailSyncPage() {
             </div>
           )}
 
+          {/* First-sync date picker — only shown before first sync */}
+          {connected && !syncState?.last_synced_at && (
+            <div className="rounded-lg border border-dashed px-4 py-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+                Choose start date
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground bg-muted rounded px-1.5 py-0.5">
+                  First sync only
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="date"
+                  value={sinceDate}
+                  max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setSinceDate(e.target.value)}
+                  className="text-sm bg-background border rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  All bank emails from this date will be processed. Larger ranges take longer — a 6-month range typically takes 1–3 min.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex items-center gap-3 flex-wrap">
             {!connected ? (
@@ -490,10 +530,18 @@ export default function GmailSyncPage() {
               </Button>
             ) : (
               <>
-                <Button onClick={handleSync} disabled={isSyncing} className="gap-2">
-                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-                  {isSyncing ? "Syncing emails..." : "Sync Now"}
-                </Button>
+                <div className="flex flex-col gap-1">
+                  <Button onClick={handleSync} disabled={isSyncing} className="gap-2">
+                    <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                    {isSyncing ? "Processing emails…" : "Sync Now"}
+                  </Button>
+                  {isSyncing && (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      This may take a minute or two for large ranges — hang tight
+                    </span>
+                  )}
+                </div>
 
                 <AlertDialog>
                   <AlertDialogTrigger asChild>

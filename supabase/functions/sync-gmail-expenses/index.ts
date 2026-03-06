@@ -245,6 +245,7 @@ Deno.serve(async (req) => {
     // ── Get Gmail access token from request body ──────────────────────────
     const body = await req.json().catch(() => ({}));
     const gmailAccessToken: string = body.gmail_access_token;
+    const sinceDateOverride: string | null = body.since_date ?? null; // YYYY-MM-DD, for first sync
     if (!gmailAccessToken) {
       return jsonResponse({ error: "gmail_access_token required" }, 400);
     }
@@ -275,38 +276,51 @@ Deno.serve(async (req) => {
     // ── Build Gmail query with date filter ────────────────────────────────
     let gmailQuery = GMAIL_QUERY;
     if (lastSyncedAt) {
+      // Subsequent sync: fetch only emails after last sync date
       const afterDate = new Date(lastSyncedAt);
-      // Gmail date format: after:YYYY/MM/DD
       const y = afterDate.getFullYear();
       const m = String(afterDate.getMonth() + 1).padStart(2, "0");
       const d = String(afterDate.getDate()).padStart(2, "0");
       gmailQuery += ` after:${y}/${m}/${d}`;
+    } else if (sinceDateOverride) {
+      // First sync: user-selected start date (YYYY-MM-DD)
+      const [y, m, d] = sinceDateOverride.split("-");
+      gmailQuery += ` after:${y}/${m}/${d}`;
     } else {
-      // First sync: look back 90 days
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      const y = ninetyDaysAgo.getFullYear();
-      const m = String(ninetyDaysAgo.getMonth() + 1).padStart(2, "0");
-      const d = String(ninetyDaysAgo.getDate()).padStart(2, "0");
+      // First sync fallback: last 90 days
+      const fallback = new Date();
+      fallback.setDate(fallback.getDate() - 90);
+      const y = fallback.getFullYear();
+      const m = String(fallback.getMonth() + 1).padStart(2, "0");
+      const d = String(fallback.getDate()).padStart(2, "0");
       gmailQuery += ` after:${y}/${m}/${d}`;
     }
 
-    // ── Fetch email list from Gmail API ───────────────────────────────────
-    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    listUrl.searchParams.set("q", gmailQuery);
-    listUrl.searchParams.set("maxResults", "50");
+    // ── Fetch ALL matching emails via pagination ───────────────────────────
+    const allMessages: GmailMessage[] = [];
+    let pageToken: string | undefined = undefined;
 
-    const listRes = await fetch(listUrl.toString(), {
-      headers: { Authorization: `Bearer ${gmailAccessToken}` },
-    });
+    do {
+      const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+      listUrl.searchParams.set("q", gmailQuery);
+      listUrl.searchParams.set("maxResults", "500");
+      if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
 
-    if (!listRes.ok) {
-      const err = await listRes.text();
-      return jsonResponse({ error: `Gmail API error: ${err}` }, 400);
-    }
+      const listRes = await fetch(listUrl.toString(), {
+        headers: { Authorization: `Bearer ${gmailAccessToken}` },
+      });
 
-    const listData: { messages?: GmailMessage[] } = await listRes.json();
-    const messages = listData.messages ?? [];
+      if (!listRes.ok) {
+        const err = await listRes.text();
+        return jsonResponse({ error: `Gmail API error: ${err}` }, 400);
+      }
+
+      const listData: { messages?: GmailMessage[]; nextPageToken?: string } = await listRes.json();
+      allMessages.push(...(listData.messages ?? []));
+      pageToken = listData.nextPageToken;
+    } while (pageToken);
+
+    const messages = allMessages;
 
     if (messages.length === 0) {
       await db.from("gmail_sync_state").upsert({
@@ -351,10 +365,7 @@ Deno.serve(async (req) => {
 
     const processedIds: string[] = [];
 
-    // Process up to 30 messages to stay within function timeout
-    const batch = newMessages.slice(0, 30);
-
-    for (const msg of batch) {
+    for (const msg of newMessages) {
       try {
         const detailRes = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
