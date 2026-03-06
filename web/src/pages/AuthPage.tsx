@@ -111,11 +111,7 @@ export default function AuthPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          scopes: "email profile https://www.googleapis.com/auth/gmail.readonly",
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
+          scopes: "email profile",
           redirectTo: `${window.location.origin}/`,
         },
       });
@@ -130,14 +126,14 @@ export default function AuthPage() {
   return (
     <>
       <PWAInstallPrompt />
-      <div className="flex items-center justify-center min-h-screen bg-black px-2 sm:px-0">
-        <Card className="w-full max-w-sm bg-zinc-900 border-zinc-700 text-white shadow-lg sm:rounded-xl sm:mx-0 mx-2">
+      <div className="flex items-center justify-center min-h-screen bg-background px-2 sm:px-0">
+        <Card className="w-full max-w-sm shadow-lg sm:rounded-xl sm:mx-0 mx-2">
           <CardHeader>
-            <CardTitle>Welcome</CardTitle>
+            <CardTitle className="text-foreground">Welcome</CardTitle>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="signIn" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-zinc-800">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="signIn">Sign In</TabsTrigger>
                 <TabsTrigger value="signUp">Sign Up</TabsTrigger>
               </TabsList>
@@ -169,10 +165,10 @@ export default function AuthPage() {
             </Tabs>
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-zinc-700" />
+                <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-zinc-900 px-2 text-muted-foreground">
+                <span className="bg-card px-2 text-muted-foreground">
                   Or continue with
                 </span>
               </div>
@@ -180,7 +176,7 @@ export default function AuthPage() {
             <Button
               onClick={handleGoogleLogin}
               disabled={isSubmitting}
-              className="w-full bg-zinc-800 hover:bg-zinc-700"
+              className="w-full"
               variant="outline"
             >
               Sign In with Google

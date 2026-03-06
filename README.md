@@ -9,7 +9,7 @@
 - [What Makes Spenny Different](#what-makes-spenny-different)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
-- [Generative UI & the `@spenny/ui-renderer` SDK](#generative-ui--the-spennyui-renderer-sdk)
+- [Generative UI & the `domino-ui` SDK](#generative-ui--the-domino-ui-sdk)
 - [Demo Prompts](#demo-prompts)
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
@@ -72,14 +72,15 @@ This is **Generative UI** — the AI is the layout engine.
 | **AI — text** | Groq `llama-3.3-70b-versatile` — intent classification, expense extraction, query building, UI JSON generation; `llama-3.1-8b-instant` — Gmail email classification |
 | **AI — vision** | Groq `meta-llama/llama-4-scout-17b-16e-instruct` — receipt and PDF extraction |
 | **AI — audio** | OpenAI Whisper (via Supabase Edge Function `transcribe-audio`) |
-| **Charts** | Recharts (inside `@spenny/ui-renderer`) |
-| **Generative UI** | `@spenny/ui-renderer` — internal SDK (see below) |
+| **Charts** | Recharts (inside `domino-ui`) |
+| **Generative UI** | `domino-ui` — JSON-to-React UI renderer SDK (see below) |
 | **PDF export** | jsPDF + jspdf-autotable |
 | **PWA** | vite-plugin-pwa |
+| **Video** | Remotion — animated trailer/promo video |
 
 ---
 
-## Generative UI & the `@spenny/ui-renderer` SDK
+## Generative UI & the `domino-ui` SDK
 
 ### The Problem
 
@@ -87,7 +88,7 @@ Early versions of Spenny had hardcoded response layouts: every expense log looke
 
 ### The Solution — AI as Layout Engine
 
-The Sage backend (`sage-chat` Edge Function) no longer returns fixed fields. It returns a `uiResponse` JSON object that describes a **tree of UI nodes**. The AI decides which nodes to include, in what order, and with what content — based on the question and the data.
+The Sage backend (`sage-chat` Edge Function) does not return fixed fields. It returns a `uiResponse` JSON object that describes a **tree of UI nodes**. The AI decides which nodes to include, in what order, and with what content — based on the question and the data.
 
 A response for "How much did I spend this month?" might look like:
 
@@ -114,9 +115,9 @@ A response for "How much did I spend this month?" might look like:
 
 The frontend renders this tree — it never knows the intent, only the nodes.
 
-### The `@spenny/ui-renderer` Package
+### The `domino-ui` Package
 
-To keep this rendering logic clean and reusable, it lives as a standalone internal package at `packages/ui-renderer` — exported as `@spenny/ui-renderer`.
+To keep this rendering logic clean and reusable, it lives as a standalone package at `packages/domino-ui` — published as `domino-ui` on npm.
 
 **Design goals:**
 - **Zero domain knowledge** — no concept of "expense" or "finance". Takes any valid `uiResponse` JSON and renders it.
@@ -138,7 +139,7 @@ To keep this rendering logic clean and reusable, it lives as a standalone intern
 **Usage in the web app:**
 
 ```tsx
-import { UiRenderer } from "@spenny/ui-renderer";
+import { UiRenderer } from "domino-ui";
 
 <UiRenderer
   layout={response.uiResponse.layout}
@@ -206,8 +207,8 @@ cd spenny-ai
 # Web app
 cd web && npm install
 
-# UI renderer SDK
-cd ../packages/ui-renderer && npm install
+# domino-ui SDK
+cd ../packages/domino-ui && npm install && npm run build
 ```
 
 ### 2. Environment
@@ -236,6 +237,7 @@ npx supabase functions deploy sage-chat --no-verify-jwt
 npx supabase functions deploy extract-receipt --no-verify-jwt
 npx supabase functions deploy transcribe-audio --no-verify-jwt
 npx supabase functions deploy sync-gmail-expenses
+npx supabase functions deploy export-expenses
 ```
 
 - Set Edge Function secrets in Supabase dashboard:
@@ -288,7 +290,7 @@ These are configured in [Google Cloud Console](https://console.cloud.google.com)
 ```
 spenny-ai/
 ├── packages/
-│   └── ui-renderer/               # @spenny/ui-renderer — Generative UI SDK
+│   └── domino-ui/                 # domino-ui — JSON-to-React Generative UI SDK
 │       └── src/
 │           ├── UiRenderer.tsx     # Root renderer component
 │           ├── renderNode.tsx     # Node type dispatch
@@ -305,16 +307,18 @@ spenny-ai/
 │   └── src/
 │       ├── App.tsx                # Routes, auth, sidebar layout
 │       ├── pages/
-│       │   ├── SagePage.tsx       # Main page — Sage AI chat interface
+│       │   ├── SagePage.tsx           # Main page — Sage AI chat interface
 │       │   ├── AllTransactionsPage.tsx
 │       │   ├── AnalyticsPage.tsx
 │       │   ├── SettingsPage.tsx
-│       │   ├── ApiKeysPage.tsx
+│       │   ├── ApiKeysPage.tsx        # API key management
+│       │   ├── McpServerPage.tsx      # MCP server integration & API key management UI
 │       │   ├── WhatsAppIntegrationPage.tsx
-│       │   ├── GmailSyncPage.tsx  # Gmail auto-sync — connect, date picker, undo
+│       │   ├── GmailSyncPage.tsx      # Gmail auto-sync — connect, date picker, undo
 │       │   ├── ShareTargetPage.tsx
+│       │   ├── HomePage.tsx           # Voice/text/image input (standalone)
 │       │   └── deprecated/
-│       │       └── HomePage.tsx   # Legacy home (voice/text/image input) — kept but not linked
+│       │       └── HomePage.tsx       # Legacy version — kept for reference
 │       └── components/
 │           ├── sidebar.tsx        # Nav sidebar with theme toggle
 │           ├── sage/
@@ -326,12 +330,14 @@ spenny-ai/
 │       ├── sage-chat/             # Main AI function — intent → uiResponse JSON
 │       ├── extract-receipt/       # Vision extraction → uiResponse JSON
 │       ├── transcribe-audio/      # Whisper transcription
+│       ├── export-expenses/       # CSV/PDF expense export endpoint
 │       ├── whatsapp-webhook/      # WhatsApp bot
 │       ├── send-whatsapp-otp/
 │       ├── verify-whatsapp-otp/
 │       └── sync-gmail-expenses/   # Gmail sync — paginated fetch, parallel AI classification, dedup
-├── app/                           # React Native / Expo mobile app
-└── mcp-server/                    # MCP server for AI tool integrations
+├── app/                           # Expo (React Native) mobile app — iOS & Android
+├── remotion/                      # Remotion video — animated trailer/promo scenes
+└── mcp-server/                    # MCP server for Claude Desktop integration
 ```
 
 ---
@@ -383,6 +389,7 @@ Email content is never stored. Only the extracted fields (amount, category, desc
 3. Deploy the Edge Function:
    ```bash
    npx supabase functions deploy sync-gmail-expenses
+npx supabase functions deploy export-expenses
    ```
 4. Run migrations to create `gmail_sync_state` and add `gmail_message_id` to `expenses`:
    ```bash
