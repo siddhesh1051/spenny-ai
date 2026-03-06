@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +27,10 @@ import {
   AlertCircle,
   Info,
   Unlink,
+  RotateCcw,
 } from "lucide-react";
+
+const UNDO_SECONDS = 10;
 
 interface SyncResult {
   inserted: number;
@@ -35,12 +38,12 @@ interface SyncResult {
   total_processed: number;
   gmail_email: string | null;
   message: string;
+  inserted_ids?: string[];
 }
 
 interface SyncState {
   last_synced_at: string | null;
   gmail_email: string | null;
-  // connected = a DB row exists with a gmail_email stored
   connected: boolean;
 }
 
@@ -48,12 +51,92 @@ export default function GmailSyncPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [isLoadingState, setIsLoadingState] = useState(true);
 
-  // Source of truth: DB row existence + gmail_email stored
+  // Undo countdown state
+  const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
+  const [undoProgress, setUndoProgress] = useState(100); // 100 → 0
+  const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const undoRafRef = useRef<number | null>(null);
+  const undoStartRef = useRef<number>(0);
+  const insertedIdsRef = useRef<string[]>([]);
+
   const connected = !!(syncState?.connected && syncState?.gmail_email);
+
+  // ── Clear undo timer on unmount ─────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearInterval(undoTimerRef.current);
+      if (undoRafRef.current) cancelAnimationFrame(undoRafRef.current);
+    };
+  }, []);
+
+  // ── Start undo countdown ─────────────────────────────────────────────────
+  const startUndoCountdown = useCallback((ids: string[]) => {
+    insertedIdsRef.current = ids;
+    setUndoSecondsLeft(UNDO_SECONDS);
+    setUndoProgress(100);
+    undoStartRef.current = performance.now();
+
+    // Smooth progress bar via rAF
+    const animate = (now: number) => {
+      const elapsed = now - undoStartRef.current;
+      const remaining = Math.max(0, 100 - (elapsed / (UNDO_SECONDS * 1000)) * 100);
+      setUndoProgress(remaining);
+      if (remaining > 0) {
+        undoRafRef.current = requestAnimationFrame(animate);
+      }
+    };
+    undoRafRef.current = requestAnimationFrame(animate);
+
+    // Seconds countdown
+    undoTimerRef.current = setInterval(() => {
+      setUndoSecondsLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(undoTimerRef.current!);
+          undoTimerRef.current = null;
+          // Time's up — dismiss undo
+          setSyncResult((r) => r ? { ...r, inserted_ids: [] } : r);
+          insertedIdsRef.current = [];
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  // ── Cancel undo countdown ────────────────────────────────────────────────
+  const cancelUndoCountdown = useCallback(() => {
+    if (undoTimerRef.current) { clearInterval(undoTimerRef.current); undoTimerRef.current = null; }
+    if (undoRafRef.current) { cancelAnimationFrame(undoRafRef.current); undoRafRef.current = null; }
+    setUndoSecondsLeft(0);
+    setUndoProgress(0);
+    insertedIdsRef.current = [];
+  }, []);
+
+  // ── Handle undo ──────────────────────────────────────────────────────────
+  const handleUndo = async () => {
+    const ids = insertedIdsRef.current;
+    if (!ids.length) return;
+    cancelUndoCountdown();
+    setIsUndoing(true);
+    try {
+      const { error } = await supabase
+        .from("expenses")
+        .delete()
+        .in("id", ids);
+      if (error) throw error;
+      setSyncResult(null);
+      toast.success(`Removed ${ids.length} synced expense${ids.length > 1 ? "s" : ""}.`);
+    } catch (e: any) {
+      toast.error(`Undo failed: ${e.message}`);
+    } finally {
+      setIsUndoing(false);
+    }
+  };
 
   const loadSyncState = useCallback(async (userId: string) => {
     const { data } = await supabase
@@ -64,11 +147,7 @@ export default function GmailSyncPage() {
 
     setSyncState(
       data
-        ? {
-            last_synced_at: data.last_synced_at,
-            gmail_email: data.gmail_email,
-            connected: !!data.gmail_email,
-          }
+        ? { last_synced_at: data.last_synced_at, gmail_email: data.gmail_email, connected: !!data.gmail_email }
         : { last_synced_at: null, gmail_email: null, connected: false }
     );
   }, []);
@@ -82,14 +161,12 @@ export default function GmailSyncPage() {
 
       const isJustConnected = localStorage.getItem("gmail_sync_connecting") === "1";
 
-      // Load DB state — source of truth for connected status
       const { data: dbState } = await supabase
         .from("gmail_sync_state")
         .select("last_synced_at, gmail_email")
         .eq("user_id", session.user.id)
         .maybeSingle();
 
-      // If just redirected back from Google OAuth, register the Gmail email into DB
       if (isJustConnected && session.provider_token) {
         localStorage.removeItem("gmail_sync_connecting");
         try {
@@ -115,7 +192,6 @@ export default function GmailSyncPage() {
         } catch { /* non-fatal */ }
       }
 
-      // Normal load: if no DB row → disconnected (don't re-register from provider_token)
       if (!dbState) {
         setSyncState({ last_synced_at: null, gmail_email: null, connected: false });
         return;
@@ -133,14 +209,11 @@ export default function GmailSyncPage() {
     }
   }, [loadSyncState]);
 
-  useEffect(() => {
-    checkAndInit();
-  }, [checkAndInit]);
+  useEffect(() => { checkAndInit(); }, [checkAndInit]);
 
   const handleConnectGmail = async () => {
     setIsConnecting(true);
     try {
-      // Set a flag so on redirect-back we know to register the Gmail email
       localStorage.setItem("gmail_sync_connecting", "1");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -160,15 +233,13 @@ export default function GmailSyncPage() {
 
   const handleDisconnectGmail = async () => {
     setIsDisconnecting(true);
+    cancelUndoCountdown();
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user?.id;
-
       if (userId) {
         await supabase.from("gmail_sync_state").delete().eq("user_id", userId);
       }
-
-      // Update local state immediately — no sign-out needed
       setSyncState({ last_synced_at: null, gmail_email: null, connected: false });
       setSyncResult(null);
       toast.success("Gmail disconnected. Your imported expenses are kept.");
@@ -180,6 +251,7 @@ export default function GmailSyncPage() {
   };
 
   const handleSync = async () => {
+    cancelUndoCountdown();
     setIsSyncing(true);
     setSyncResult(null);
     try {
@@ -203,12 +275,25 @@ export default function GmailSyncPage() {
 
       const result = data as SyncResult;
       setSyncResult(result);
-
-      // Refresh sync state from DB
       await loadSyncState(session.user.id);
 
-      if (result.inserted > 0) toast.success(result.message);
-      else toast.info(result.message);
+      if (result.inserted > 0) {
+        // Fetch the IDs of just-inserted expenses for undo
+        const { data: recentRows } = await supabase
+          .from("expenses")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .not("gmail_message_id", "is", null)
+          .order("date", { ascending: false })
+          .limit(result.inserted);
+
+        const ids = recentRows?.map((r: { id: string }) => r.id) ?? [];
+        setSyncResult({ ...result, inserted_ids: ids });
+        startUndoCountdown(ids);
+        toast.success(result.message);
+      } else {
+        toast.info(result.message);
+      }
     } catch (error: any) {
       toast.error(`Sync failed: ${error.message}`);
     } finally {
@@ -218,6 +303,8 @@ export default function GmailSyncPage() {
 
   const formatDate = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString() : "Never";
+
+  const showUndo = undoSecondsLeft > 0 && (syncResult?.inserted ?? 0) > 0;
 
   if (isLoadingState) {
     return (
@@ -254,7 +341,6 @@ export default function GmailSyncPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-
           {/* How it works */}
           <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -270,10 +356,9 @@ export default function GmailSyncPage() {
             </ul>
           </div>
 
-          {/* Connection status — single unified block */}
+          {/* Connection status */}
           {connected ? (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 space-y-2">
-              {/* Top row: connected label + disconnect */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -308,14 +393,10 @@ export default function GmailSyncPage() {
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
-
-              {/* Connected email */}
               <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
                 <Mail className="h-3.5 w-3.5 shrink-0 opacity-70" />
                 <span className="font-medium truncate">{syncState?.gmail_email}</span>
               </div>
-
-              {/* Last sync */}
               {syncState?.last_synced_at && (
                 <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70">
                   Last synced: {formatDate(syncState.last_synced_at)}
@@ -346,36 +427,62 @@ export default function GmailSyncPage() {
         </CardContent>
       </Card>
 
-      {/* Sync result card */}
-      {syncResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Sync Results</CardTitle>
-            {syncResult.gmail_email && (
-              <CardDescription className="flex items-center gap-1.5">
-                <Mail className="h-3.5 w-3.5" />
-                {syncResult.gmail_email}
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <p className="text-2xl font-bold text-emerald-500">{syncResult.inserted}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Expenses Added</p>
+      {/* Sync result card with undo */}
+      {syncResult && (syncResult.inserted > 0 || syncResult.total_processed > 0) && (
+        <div className="relative rounded-xl overflow-hidden">
+          {/* Progress border that drains left-to-right */}
+          {showUndo && (
+            <div
+              className="absolute bottom-0 left-0 h-[2px] bg-white/70 transition-none rounded-full"
+              style={{ width: `${undoProgress}%` }}
+            />
+          )}
+
+          <Card className="rounded-xl border-0 ring-1 ring-border">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Sync Results</CardTitle>
+                  {syncResult.gmail_email && (
+                    <CardDescription className="flex items-center gap-1.5 mt-0.5">
+                      <Mail className="h-3.5 w-3.5" />
+                      {syncResult.gmail_email}
+                    </CardDescription>
+                  )}
+                </div>
+
+                {/* Undo button — visible only during countdown */}
+                {showUndo && (
+                  <button
+                    onClick={handleUndo}
+                    disabled={isUndoing}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 hover:bg-white/20 text-white transition-colors disabled:opacity-50"
+                  >
+                    <RotateCcw className={`h-3.5 w-3.5 ${isUndoing ? "animate-spin" : ""}`} />
+                    {isUndoing ? "Undoing..." : `Undo all (${undoSecondsLeft}s)`}
+                  </button>
+                )}
               </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <p className="text-2xl font-bold">{syncResult.skipped}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Non-Expense Emails</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-2xl font-bold text-emerald-500">{syncResult.inserted}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Expenses Added</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-2xl font-bold">{syncResult.skipped}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Non-Expense Emails</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-2xl font-bold">{syncResult.total_processed}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Emails Processed</p>
+                </div>
               </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <p className="text-2xl font-bold">{syncResult.total_processed}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Emails Processed</p>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">{syncResult.message}</p>
-          </CardContent>
-        </Card>
+              <p className="text-sm text-muted-foreground">{syncResult.message}</p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Privacy notice */}

@@ -74,7 +74,7 @@ async function groqJSON<T>(prompt: string, key: string): Promise<T | null> {
         model: MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
-        max_tokens: 600,
+        max_tokens: 200,
       }),
     });
     if (!res.ok) return null;
@@ -121,35 +121,62 @@ async function extractExpenseFromEmail(
   gmailMessageId: string,
   groqKey: string
 ): Promise<ExtractedExpense | null> {
-  const prompt = `You are an expense extraction AI. Analyze this bank/payment email and extract the expense.
+  const prompt = `You are an Indian expense categorization AI specialized in UPI, NEFT, IMPS, and bank debit alert emails. Your job is to extract the expense amount, write a clean description, and assign the most accurate category.
 
-Email content:
+EMAIL CONTENT:
 ${emailText}
 
-Email date: ${emailDate}
+EMAIL DATE: ${emailDate}
 
-Categories (use ONLY these): food, travel, groceries, entertainment, utilities, rent, other
-- food: restaurants, cafes, takeout, delivery, swiggy, zomato
-- groceries: supermarket, vegetables, household items, blinkit, zepto
-- travel: fuel, uber, ola, rapido, auto, taxi, bus, train, flights, hotels, parking, metro
-- entertainment: movies, games, netflix, spotify, hotstar, hobbies, pvr
-- utilities: electricity, water, gas, internet, phone bill, recharge
-- rent: rent, accommodation, housing
-- other: anything else including shopping, medical, transfers
+━━━ CATEGORY RULES ━━━
 
-IMPORTANT RULES:
-1. Only extract DEBIT transactions (money going OUT from the account)
-2. Ignore credit transactions, salary credits, refunds, cashbacks
-3. If this is NOT a debit expense email, return: {"is_expense": false}
-4. If it IS a debit expense, return:
+Use merchant name, UPI VPA (the part before @), and context clues to decide the category.
+
+FOOD — restaurants, cafes, dhabas, bakeries, food delivery, juice bars, ice cream, street food
+  Brands: Swiggy, Zomato, Blinkit (food orders), McDonald's, KFC, Domino's, Pizza Hut, Burger King, Subway, Starbucks, Cafe Coffee Day, Chaayos, Haldiram's, Bikanervala, Amul parlour, Naturals, Baskin Robbins, Wow Momo, Behrouz, Fasoos, Box8, Faasos, Oven Story, La Pino'z, Saravana Bhavan
+  UPI clues: names like "hotel", "dhaba", "cafe", "kitchen", "foods", "restaurant", "snacks", "biryani", "sweets", "mithai", "juice", "chai", "tea", "bakery", "tiffin", "meals", "lunch", "dinner", "canteen"
+
+GROCERIES — supermarkets, kirana stores, vegetables, fruits, dairy, household items, pharmacy staples
+  Brands: BigBasket, Blinkit (grocery), Zepto, Swiggy Instamart, DMart, Reliance Fresh, Reliance Smart, More Supermarket, Spencer's, Nature's Basket, JioMart, Grofers, Licious, Country Delight, Milkbasket, Natures Basket, Nilgiris
+  UPI clues: "kirana", "grocery", "general store", "provision", "mart", "supermarket", "vegetables", "sabzi", "fruits", "dairy", "medical store", "chemist", "pharmacy" (day-to-day items), "departmental"
+
+TRAVEL — fuel, ride-hailing, public transport, flights, hotels, parking, tolls, cab rentals
+  Brands: Ola, Uber, Rapido, InDrive, Namma Yatri, BluSmart, Meru, Redbus, IRCTC, MakeMyTrip, GoIbibo, Cleartrip, EaseMyTrip, Indigo, Air India, SpiceJet, Akasa, Indian Oil, BPCL, HP Petrol, Shell, Reliance Petrol, FASTag, NHAI, Ola Money (rides), metro card, BEST, BMTC, DTC, TSRTC
+  UPI clues: "fuel", "petrol", "diesel", "pump", "garage", "cab", "auto", "travels", "tours", "parking", "toll", "airport", "station", "bus", "taxi", "rental"
+
+ENTERTAINMENT — movies, OTT, gaming, events, sports, amusement parks, streaming
+  Brands: BookMyShow, PVR, INOX, Cinepolis, Netflix, Amazon Prime, Disney+ Hotstar, SonyLIV, ZEE5, Spotify, Apple Music, YouTube Premium, JioSaavn, Gaana, Steam, PlayStation, Xbox, Dream11, MPL, WinZO, Ludo King, Paytm Games, Smaaash, Wonderla
+  UPI clues: "cinema", "movies", "games", "entertainment", "club", "lounge", "pub", "bar", "event", "concert", "sports", "gym", "fitness", "bowling", "arcade"
+
+UTILITIES — electricity, water, gas, internet, mobile recharge, DTH, insurance, EMI
+  Brands: Airtel, Jio, Vi (Vodafone Idea), BSNL, Tata Sky, Dish TV, Hathway, ACT Fibernet, YOU Broadband, Indraprashtha Gas, MGL, Adani Gas, BESCOM, MSEDCL, TATA Power, CESC, Jal Board, LIC, HDFC Life, ICICI Prudential, BajajAllianz, Star Health, PhonePe Recharge, Paytm Recharge, BBPS
+  UPI clues: "electricity", "ebill", "recharge", "broadband", "internet", "wifi", "gas", "water", "insurance", "premium", "emi", "loan", "dth", "cable", "bill payment"
+
+RENT — rent, PG, hostel, accommodation payments
+  UPI clues: "rent", "pg", "hostel", "accommodation", "society", "flat", "house", "maintenance", "apartment"
+
+OTHER — use ONLY when none of the above clearly fits (e.g. bank transfers to individuals, ATM withdrawals, investment, shopping for clothes/electronics)
+
+━━━ DESCRIPTION RULES ━━━
+- Extract the merchant/payee name from the UPI VPA, reference, or email body
+- For UPI: use the part BEFORE the @ in the VPA as a starting point, then clean it up
+  e.g. "zomatoorders@icici" → "Zomato", "swiggy.in@icici" → "Swiggy", "rohit.sharma99@ybl" → "Rohit Sharma"
+- Capitalize properly, remove numbers/special chars from names
+- Max 40 characters, no bank names in description
+
+━━━ DECISION RULES ━━━
+1. Only extract DEBIT transactions (money going OUT). Look for words: "debited", "paid", "sent", "transferred to", "payment of", "spent"
+2. IGNORE: credit, received, refund, cashback, reward, salary, interest credited
+3. If NOT a debit expense → return: {"is_expense": false}
+4. If IS a debit expense → return:
 {
   "is_expense": true,
-  "amount": <positive number only, no currency symbols>,
-  "category": <one of the valid categories>,
-  "description": <merchant name or short description, max 50 chars>
+  "amount": <number, no symbols>,
+  "category": <exactly one of: food, travel, groceries, entertainment, utilities, rent, other>,
+  "description": <clean merchant name, max 40 chars>
 }
 
-Return ONLY valid JSON, no markdown.`;
+Return ONLY valid JSON. No markdown, no explanation.`;
 
   const result = await groqJSON<{
     is_expense: boolean;
