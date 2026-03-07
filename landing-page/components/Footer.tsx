@@ -16,19 +16,33 @@ const footerLinks = {
   ],
 };
 
-function CloverIcon({ size = 24 }: { size?: number }) {
+function LogoIcon({ size = 24 }: { size?: number }) {
+  const BG = "#030c07";
+  const G1 = "#3dd68c";
+  const G2 = "#1a8a5a";
+  const G3 = "#0a3d22";
+  const bubble = "M 50,14 A 30,30 0 1,1 24,60 C 18,70 11,78 8,88 C 20,80 32,72 38,68 A 30,30 0 0,1 50,74 A 30,30 0 0,1 50,14 Z";
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 2C16 2 16 9 16 9C16 9 9 9 9 16C9 16 9 23 16 23C16 23 16 30 16 30C16 30 23 30 23 23C23 23 30 23 30 16C30 16 30 9 23 9C23 9 23 2 16 2Z" fill="url(#footer-clover-grad)" opacity="0.9" />
-      <path d="M16 9C16 9 9 9 9 16C9 16 2 16 2 16C2 16 2 9 9 9C9 9 9 2 16 2C16 2 16 9 16 9Z" fill="url(#footer-clover-grad2)" opacity="0.7" />
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="footer-clover-grad" x1="9" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3dd68c" /><stop offset="1" stopColor="#0f5e3c" />
+        <linearGradient id="footer-cg" x1="10" y1="5" x2="90" y2="95" gradientUnits="userSpaceOnUse">
+          <stop stopColor={G1} />
+          <stop offset="0.55" stopColor={G2} />
+          <stop offset="1" stopColor={G3} />
         </linearGradient>
-        <linearGradient id="footer-clover-grad2" x1="2" y1="2" x2="16" y2="16" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3dd68c" /><stop offset="1" stopColor="#1a8a5a" />
-        </linearGradient>
+        <radialGradient id="footer-rg" cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stopColor={G2} stopOpacity="0.2" />
+          <stop offset="100%" stopColor={G2} stopOpacity="0" />
+        </radialGradient>
       </defs>
+      <rect width="100" height="100" rx="22" fill={BG} />
+      <rect width="100" height="100" rx="22" fill="url(#footer-rg)" />
+      <path d={bubble} fill="url(#footer-cg)" opacity="0.15" />
+      <path d={bubble} fill="none" stroke="url(#footer-cg)" strokeWidth="3.2" strokeLinejoin="round" />
+      <circle cx="50" cy="44" r="20" fill="none" stroke={G1} strokeWidth="1.4" strokeOpacity="0.22" />
+      <circle cx="38" cy="44" r="3.8" fill="url(#footer-cg)" />
+      <circle cx="50" cy="44" r="3.8" fill="url(#footer-cg)" />
+      <circle cx="62" cy="44" r="3.8" fill="url(#footer-cg)" />
     </svg>
   );
 }
@@ -95,7 +109,7 @@ export default function Footer({ onOpenWaitlist }: { onOpenWaitlist: () => void 
           {/* Brand column */}
           <div className="col-span-2 md:col-span-2">
             <a href="#" className="flex items-center gap-2 mb-4">
-              <CloverIcon size={24} />
+              <LogoIcon size={24} />
               <span className="font-semibold text-white">
                 Spenny <span className="gradient-text-sage">AI</span>
               </span>
