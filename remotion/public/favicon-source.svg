@@ -1,0 +1,27 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark background circle -->
+  <rect width="512" height="512" rx="120" fill="#030c07"/>
+
+  <!-- Clover shape scaled to fit 512x512 with padding -->
+  <!-- Original viewBox 0 0 32 32, scaled by 14x with offset 32 -->
+  <path
+    d="M256 32C256 32 256 144 256 144C256 144 144 144 144 256C144 256 144 368 256 368C256 368 256 480 256 480C256 480 368 480 368 368C368 368 480 368 480 256C480 256 480 144 368 144C368 144 368 32 256 32Z"
+    fill="url(#clover-grad)"
+    opacity="0.9"
+  />
+  <path
+    d="M256 144C256 144 144 144 144 256C144 256 32 256 32 256C32 256 32 144 144 144C144 144 144 32 256 32C256 32 256 144 256 144Z"
+    fill="url(#clover-grad2)"
+    opacity="0.75"
+  />
+  <defs>
+    <linearGradient id="clover-grad" x1="144" y1="32" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3dd68c"/>
+      <stop offset="1" stop-color="#0f5e3c"/>
+    </linearGradient>
+    <linearGradient id="clover-grad2" x1="32" y1="32" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3dd68c"/>
+      <stop offset="1" stop-color="#1a8a5a"/>
+    </linearGradient>
+  </defs>
+</svg>

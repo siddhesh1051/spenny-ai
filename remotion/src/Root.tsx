@@ -1,6 +1,8 @@
 import "./index.css";
-import { Composition } from "remotion";
+import { Composition, Still } from "remotion";
 import { SageTrailer } from "./SageTrailer";
+import { OgThumbnail } from "./OgThumbnail";
+import { FaviconStill } from "./FaviconStill";
 
 const FPS = 60;
 
@@ -24,6 +26,18 @@ export const RemotionRoot: React.FC = () => {
         fps={FPS}
         width={2560}
         height={1440}
+      />
+      <Still
+        id="OgThumbnail"
+        component={OgThumbnail}
+        width={1200}
+        height={630}
+      />
+      <Still
+        id="Favicon"
+        component={FaviconStill}
+        width={512}
+        height={512}
       />
     </>
   );
