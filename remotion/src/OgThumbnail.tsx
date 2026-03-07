@@ -10,33 +10,36 @@ const { fontFamily } = loadFont("normal", {
 const W = 1200;
 const H = 630;
 
-// ── Dots logo (matches Navbar/favicon) ──────────────────────────────────────
+// ── Coin-Chat-Dots logo (matches Navbar/favicon) ─────────────────────────────
 const DotsLogo: React.FC<{ size: number }> = ({ size }) => {
   const BG = "#030c07";
   const G1 = "#3dd68c";
   const G2 = "#1a8a5a";
   const G3 = "#0a3d22";
   return (
-    <svg width={size} height={size} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="512" height="512" rx="115" fill={BG} />
-      <radialGradient id="og-dl-glow" cx="50%" cy="38%" r="56%">
-        <stop offset="0%" stopColor={G2} stopOpacity="0.35" />
-        <stop offset="100%" stopColor={BG} stopOpacity="0" />
-      </radialGradient>
-      <rect width="512" height="512" rx="115" fill="url(#og-dl-glow)" />
-      <circle cx="262" cy="216" r="155" fill="url(#og-dl-cf)" />
-      <circle cx="262" cy="216" r="123" fill="none" stroke={BG} strokeWidth="5" opacity="0.15" />
-      <path d="M178 352 C156 384 124 420 100 458 C146 440 200 412 228 388 C218 376 196 364 178 352Z" fill="url(#og-dl-cf)" />
-      {[0, 1, 2].map((i) => (
-        <circle key={i} cx={196 + i * 66} cy="218" r="24" fill={BG} opacity="0.86" />
-      ))}
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="og-dl-cf" x1="107" y1="62" x2="417" y2="460" gradientUnits="userSpaceOnUse">
+        <linearGradient id="og-cg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
           <stop stopColor={G1} />
           <stop offset="0.55" stopColor={G2} />
           <stop offset="1" stopColor={G3} />
         </linearGradient>
+        <radialGradient id="og-rg" cx="50%" cy="38%" r="60%">
+          <stop offset="0%" stopColor={G2} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={G2} stopOpacity="0" />
+        </radialGradient>
       </defs>
+      <rect width="64" height="64" rx="14" fill={BG} />
+      <rect width="64" height="64" rx="14" fill="url(#og-rg)" />
+      <g transform="translate(32,32) scale(0.76) translate(-32,-31)">
+        <circle cx="32" cy="28" r="22" fill="url(#og-cg)" opacity="0.13" />
+        <circle cx="32" cy="28" r="22" fill="none" stroke="url(#og-cg)" strokeWidth="2.5" />
+        <circle cx="32" cy="28" r="15" fill="none" stroke={G1} strokeWidth="1" strokeOpacity="0.22" />
+        <path d="M22 50 C18 57 12 61 8 63 C17 60 27 55 33 48" fill="url(#og-cg)" />
+        <circle cx="25" cy="28" r="2.6" fill="url(#og-cg)" />
+        <circle cx="32" cy="28" r="2.6" fill="url(#og-cg)" />
+        <circle cx="39" cy="28" r="2.6" fill="url(#og-cg)" />
+      </g>
     </svg>
   );
 };
