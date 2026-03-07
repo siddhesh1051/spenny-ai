@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://spenny.ai");
+// NEXT_PUBLIC_SITE_URL should be set to https://spennyai.vercel.app in Vercel env vars.
+// VERCEL_URL is the per-deployment URL (random hash) — NOT suitable for og:image.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://spennyai.vercel.app";
 const siteName = "Spenny AI";
 const siteTitle = "Spenny AI — Agentic Expense Tracker powered by Sage";
 const siteDescription =
   "Track expenses the way you speak. Spenny AI's Sage assistant logs expenses from chat, voice, receipts & bank emails — then answers 'where did my money go?' instantly. No forms. Ever.";
 
+const ogImageUrl = `${siteUrl}/og-thumbnail.png`;
+const logoUrl = `${siteUrl}/logo-icon.png`;
+
 const ogImage = {
-  url: "/og-thumbnail.png",
+  url: ogImageUrl,
   width: 1200,
   height: 630,
   alt: "Spenny AI — Agentic Expense Tracker powered by Sage",
@@ -65,7 +68,7 @@ export const metadata: Metadata = {
     },
   },
 
-  // ── Open Graph (Facebook, WhatsApp, LinkedIn, iMessage link previews) ──────
+  // ── Open Graph ───────────────────────────────────────────────────────────
   openGraph: {
     type: "website",
     locale: "en_US",
@@ -76,46 +79,32 @@ export const metadata: Metadata = {
     images: [ogImage],
   },
 
-  // ── Twitter / X card ──────────────────────────────────────────────────────
-  // summary_large_image renders the full 1200×630 card on X, giving the same
-  // rich preview on WhatsApp (falls back to og:image) and Telegram.
+  // ── Twitter / X ───────────────────────────────────────────────────────────
   twitter: {
     card: "summary_large_image",
     site: "@spennyai",
     creator: "@spennyai",
     title: siteTitle,
     description: siteDescription,
-    images: [{ url: "/og-thumbnail.png", alt: ogImage.alt }],
+    images: [{ url: ogImageUrl, alt: ogImage.alt }],
   },
 
-  // ── Canonical & alternates ────────────────────────────────────────────────
   alternates: {
     canonical: siteUrl,
   },
 
-  // ── App icons ─────────────────────────────────────────────────────────────
-  // app/icon.png is auto-picked by Next.js as the favicon.
-  // These entries cover <link rel="icon"> fallbacks and Apple touch icon.
   icons: {
-    icon: [
-      { url: "/logo-icon.png", sizes: "512x512", type: "image/png" },
-    ],
+    icon: [{ url: "/logo-icon.png", sizes: "512x512", type: "image/png" }],
     apple: { url: "/logo-icon.png", sizes: "512x512", type: "image/png" },
     shortcut: "/logo-icon.png",
   },
 
-  // ── PWA / mobile ──────────────────────────────────────────────────────────
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     title: "Spenny AI",
     statusBarStyle: "black-translucent",
   },
-
-  // ── Verification placeholders (fill in when you connect to Search Console) ─
-  // verification: {
-  //   google: "YOUR_GOOGLE_SITE_VERIFICATION_TOKEN",
-  // },
 };
 
 // ── JSON-LD structured data ───────────────────────────────────────────────────
@@ -174,33 +163,46 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* JSON-LD */}
+        {/* JSON-LD structured data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
 
-        {/* WhatsApp / iMessage / Slack use og: tags above, but these extras
-            help some parsers that read <meta name="…"> instead of og: */}
-        <meta name="description" content={siteDescription} />
-        <meta name="image" content={`${siteUrl}/og-thumbnail.png`} />
+        {/* ── og:logo — used by Google Search, LinkedIn, WhatsApp business previews */}
+        <meta property="og:logo" content={logoUrl} />
 
-        {/* LinkedIn — reads og: but also these: */}
+        {/* ── Absolute og:image fallback for parsers that ignore metadataBase ── */}
+        <meta property="og:image" content={ogImageUrl} />
+        <meta property="og:image:secure_url" content={ogImageUrl} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:type" content="image/png" />
+        <meta property="og:image:alt" content={ogImage.alt} />
 
-        {/* Pinterest / Slack unfurl */}
-        <meta name="thumbnail" content={`${siteUrl}/og-thumbnail.png`} />
+        {/* ── Twitter / X explicit absolute URLs ────────────────────────────── */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@spennyai" />
+        <meta name="twitter:creator" content="@spennyai" />
+        <meta name="twitter:title" content={siteTitle} />
+        <meta name="twitter:description" content={siteDescription} />
+        <meta name="twitter:image" content={ogImageUrl} />
+        <meta name="twitter:image:alt" content={ogImage.alt} />
 
-        {/* iOS Safari smart-app banner */}
+        {/* ── LinkedIn explicit tags (reads og: but double-specify for safety) ─ */}
+        <meta property="og:site_name" content={siteName} />
+
+        {/* ── WhatsApp / iMessage / Telegram fallbacks ─────────────────────── */}
+        <meta name="image" content={ogImageUrl} />
+        <meta name="thumbnail" content={ogImageUrl} />
+        <meta name="description" content={siteDescription} />
+
+        {/* ── PWA / mobile chrome ───────────────────────────────────────────── */}
+        <meta name="theme-color" content="#030c07" />
+        <meta name="msapplication-TileColor" content="#030c07" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Spenny AI" />
-
-        {/* Theme colour — browser chrome (WhatsApp in-app browser, Android) */}
-        <meta name="theme-color" content="#030c07" />
-        <meta name="msapplication-TileColor" content="#030c07" />
       </head>
       <body className="antialiased">
         {children}
