@@ -10,33 +10,30 @@ const navLinks = [
   { label: "Pricing", href: "#pricing" },
 ];
 
-function CloverIcon({ size = 28 }: { size?: number }) {
+function LogoIcon({ size = 28 }: { size?: number }) {
+  const BG = "#030c07";
+  const G1 = "#3dd68c";
+  const G2 = "#1a8a5a";
+  const G3 = "#0a3d22";
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M16 2C16 2 16 9 16 9C16 9 9 9 9 16C9 16 9 23 16 23C16 23 16 30 16 30C16 30 23 30 23 23C23 23 30 23 30 16C30 16 30 9 23 9C23 9 23 2 16 2Z"
-        fill="url(#clover-grad)"
-        opacity="0.9"
-      />
-      <path
-        d="M16 9C16 9 9 9 9 16C9 16 2 16 2 16C2 16 2 9 9 9C9 9 9 2 16 2C16 2 16 9 16 9Z"
-        fill="url(#clover-grad2)"
-        opacity="0.7"
-      />
+    <svg width={size} height={size} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="512" height="512" rx="115" fill={BG} />
+      <radialGradient id="nav-glow" cx="50%" cy="38%" r="56%">
+        <stop offset="0%" stopColor={G2} stopOpacity="0.35" />
+        <stop offset="100%" stopColor={BG} stopOpacity="0" />
+      </radialGradient>
+      <rect width="512" height="512" rx="115" fill="url(#nav-glow)" />
+      <circle cx="262" cy="216" r="155" fill="url(#nav-cf)" />
+      <circle cx="262" cy="216" r="123" fill="none" stroke={BG} strokeWidth="5" opacity="0.15" />
+      <path d="M178 352 C156 384 124 420 100 458 C146 440 200 412 228 388 C218 376 196 364 178 352Z" fill="url(#nav-cf)" />
+      {[0, 1, 2].map((i) => (
+        <circle key={i} cx={196 + i * 66} cy="218" r="24" fill={BG} opacity="0.86" />
+      ))}
       <defs>
-        <linearGradient id="clover-grad" x1="9" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3dd68c" />
-          <stop offset="1" stopColor="#0f5e3c" />
-        </linearGradient>
-        <linearGradient id="clover-grad2" x1="2" y1="2" x2="16" y2="16" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3dd68c" />
-          <stop offset="1" stopColor="#1a8a5a" />
+        <linearGradient id="nav-cf" x1="107" y1="62" x2="417" y2="460" gradientUnits="userSpaceOnUse">
+          <stop stopColor={G1} />
+          <stop offset="0.55" stopColor={G2} />
+          <stop offset="1" stopColor={G3} />
         </linearGradient>
       </defs>
     </svg>
@@ -75,7 +72,7 @@ export default function Navbar({ onOpenWaitlist }: NavbarProps) {
           <div className="flex items-center justify-between px-5 py-3">
             {/* Logo */}
             <a href="#" className="flex items-center gap-2.5 cursor-pointer">
-              <CloverIcon size={28} />
+              <LogoIcon size={28} />
               <span className="font-semibold text-lg tracking-tight text-white">
                 Spenny <span className="gradient-text-sage">AI</span>
               </span>

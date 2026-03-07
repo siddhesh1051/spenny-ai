@@ -10,32 +10,33 @@ const { fontFamily } = loadFont("normal", {
 const W = 1200;
 const H = 630;
 
-// ── Clover logo ─────────────────────────────────────────────────────────────
-const Clover: React.FC<{ size: number }> = ({ size }) => {
-  const r = size * 0.28;
-  const cx = size / 2;
-  const cy = size / 2;
-  const off = size * 0.18;
+// ── Dots logo (matches Navbar/favicon) ──────────────────────────────────────
+const DotsLogo: React.FC<{ size: number }> = ({ size }) => {
+  const BG = "#030c07";
+  const G1 = "#3dd68c";
+  const G2 = "#1a8a5a";
+  const G3 = "#0a3d22";
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="512" height="512" rx="115" fill={BG} />
+      <radialGradient id="og-dl-glow" cx="50%" cy="38%" r="56%">
+        <stop offset="0%" stopColor={G2} stopOpacity="0.35" />
+        <stop offset="100%" stopColor={BG} stopOpacity="0" />
+      </radialGradient>
+      <rect width="512" height="512" rx="115" fill="url(#og-dl-glow)" />
+      <circle cx="262" cy="216" r="155" fill="url(#og-dl-cf)" />
+      <circle cx="262" cy="216" r="123" fill="none" stroke={BG} strokeWidth="5" opacity="0.15" />
+      <path d="M178 352 C156 384 124 420 100 458 C146 440 200 412 228 388 C218 376 196 364 178 352Z" fill="url(#og-dl-cf)" />
+      {[0, 1, 2].map((i) => (
+        <circle key={i} cx={196 + i * 66} cy="218" r="24" fill={BG} opacity="0.86" />
+      ))}
       <defs>
-        <radialGradient id="og-leaf" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#4ade80" />
-          <stop offset="100%" stopColor="#16a34a" />
-        </radialGradient>
-        <filter id="og-glow">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
+        <linearGradient id="og-dl-cf" x1="107" y1="62" x2="417" y2="460" gradientUnits="userSpaceOnUse">
+          <stop stopColor={G1} />
+          <stop offset="0.55" stopColor={G2} />
+          <stop offset="1" stopColor={G3} />
+        </linearGradient>
       </defs>
-      <circle cx={cx} cy={cy - off} r={r} fill="url(#og-leaf)" opacity={0.92} filter="url(#og-glow)" />
-      <circle cx={cx + off} cy={cy} r={r} fill="url(#og-leaf)" opacity={0.92} filter="url(#og-glow)" />
-      <circle cx={cx} cy={cy + off} r={r} fill="url(#og-leaf)" opacity={0.92} filter="url(#og-glow)" />
-      <circle cx={cx - off} cy={cy} r={r} fill="url(#og-leaf)" opacity={0.92} filter="url(#og-glow)" />
-      <circle cx={cx} cy={cy} r={r * 0.45} fill="#15803d" />
     </svg>
   );
 };
@@ -146,7 +147,7 @@ export const OgThumbnail: React.FC = () => {
             marginBottom: 36,
           }}
         >
-          <Clover size={38} />
+          <DotsLogo size={38} />
           <span
             style={{
               fontSize: 22,
