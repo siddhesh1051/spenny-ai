@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-const siteUrl = "https://spenny.ai";
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://spenny.ai");
 const siteName = "Spenny AI";
 const siteTitle = "Spenny AI — Agentic Expense Tracker powered by Sage";
 const siteDescription =

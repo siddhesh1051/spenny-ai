@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
             Email: email,
             ...(mobile ? { Mobile: mobile } : {}),
             ...(referral ? { "How did you hear about us": referral } : {}),
-            "Interested in Pro": interestedInPro,
+            ...(interestedInPro ? { "Pro Interest": true } : {}),
           },
         }),
       }
