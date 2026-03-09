@@ -244,7 +244,7 @@ export default function HeroSection({ onOpenWaitlist }: HeroSectionProps) {
           {/* Screenshot */}
           <div className="relative" style={{ maxHeight: "650px", overflow: "hidden" }}>
             <Image
-              src="/screenshot-sage.png"
+              src="/hero-sage.png"
               alt="Sage — AI chat interface"
               width={1280}
               height={800}
