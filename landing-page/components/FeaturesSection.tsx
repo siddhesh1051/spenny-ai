@@ -12,11 +12,13 @@ const SAGE_LIGHT = "#3dd68c";
 function VisualConversation() {
   const messages = [
     { role: "user", text: "Spent ₹200 on dinner, ₹50 Uber, ₹80 coffee" },
-    { role: "sage", items: [
-      { label: "Dinner", cat: "Food & Dining", amt: "₹200", icon: "🍽️" },
-      { label: "Uber", cat: "Transport", amt: "₹50", icon: "🚗" },
-      { label: "Coffee", cat: "Cafes", amt: "₹80", icon: "☕" },
-    ]},
+    {
+      role: "sage", items: [
+        { label: "Dinner", cat: "Food & Dining", amt: "₹200", icon: "🍽️" },
+        { label: "Uber", cat: "Transport", amt: "₹50", icon: "🚗" },
+        { label: "Coffee", cat: "Cafes", amt: "₹80", icon: "☕" },
+      ]
+    },
     { role: "user", text: "Actually remove coffee" },
     { role: "sage", text: "Done — coffee removed. ₹250 total logged." },
   ];
@@ -167,11 +169,11 @@ function PieChart({ slices }: { slices: { pct: number; color: string }[] }) {
 
 function VisualAnalytics() {
   const categories = [
-    { label: "Food",      pct: 42, amt: "₹9,360",  color: SAGE_LIGHT },
-    { label: "Transport", pct: 24, amt: "₹5,400",  color: "#22b572" },
-    { label: "Shopping",  pct: 20, amt: "₹7,200",  color: SAGE_GREEN },
-    { label: "Utilities", pct: 9,  amt: "₹3,600",  color: "#0f5e3c" },
-    { label: "Health",    pct: 5,  amt: "₹2,400",  color: "rgba(26,138,90,0.4)" },
+    { label: "Food", pct: 42, amt: "₹9,360", color: SAGE_LIGHT },
+    { label: "Transport", pct: 24, amt: "₹5,400", color: "#22b572" },
+    { label: "Shopping", pct: 20, amt: "₹7,200", color: SAGE_GREEN },
+    { label: "Utilities", pct: 9, amt: "₹3,600", color: "#0f5e3c" },
+    { label: "Health", pct: 5, amt: "₹2,400", color: "rgba(26,138,90,0.4)" },
   ];
   const metrics = [
     { label: "Total spent", value: "₹27,960", change: "-8%" },
@@ -248,7 +250,7 @@ function VisualExport() {
   const formats = [
     { name: "CSV Export", desc: "All transactions · Mar 2025", icon: "📊", ready: true },
     { name: "PDF Report", desc: "Category summary · Q1 2025", icon: "📄", ready: true },
-    { name: "WhatsApp", desc: "Sent to +91 98765 43210", icon: "💬", ready: true },
+    { name: "WhatsApp", desc: "Sent to +91 98XX XXXXX", icon: "💬", ready: false },
   ];
   return (
     <div className="h-full flex flex-col gap-3">
@@ -353,9 +355,8 @@ function FeatureRow({ feature, index }: { feature: typeof features[0]; index: nu
       initial={{ opacity: 0 }}
       animate={inView ? { opacity: 1 } : {}}
       transition={{ duration: 0.5 }}
-      className={`grid grid-cols-1 lg:grid-cols-2 gap-10 items-center py-16 ${
-        index < features.length - 1 ? "border-b" : ""
-      }`}
+      className={`grid grid-cols-1 lg:grid-cols-2 gap-10 items-center py-16 ${index < features.length - 1 ? "border-b" : ""
+        }`}
       style={{ borderColor: "rgba(26,138,90,0.08)" }}
     >
       {/* Text side */}
