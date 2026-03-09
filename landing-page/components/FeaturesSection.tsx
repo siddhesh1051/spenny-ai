@@ -136,22 +136,25 @@ function VisualReceiptScan() {
 }
 
 function PieChart({ slices }: { slices: { pct: number; color: string }[] }) {
-  const cx = 60; const cy = 60; const r = 48; const gap = 2.5;
+  const cx = 60; const cy = 60; const r = 48; const gap = 1.5;
   let cumulative = 0;
-  const paths = slices.map((s) => {
+  const paths = slices.flatMap((s) => {
     const start = cumulative;
     cumulative += s.pct;
+    if (s.pct < 2) return []; // skip slivers that would produce degenerate arcs
     const startAngle = (start / 100) * 360 - 90;
     const endAngle = (cumulative / 100) * 360 - 90;
     const gapAngle = (gap / (2 * Math.PI * r)) * 360;
     const a1 = ((startAngle + gapAngle) * Math.PI) / 180;
     const a2 = ((endAngle - gapAngle) * Math.PI) / 180;
-    const x1 = cx + r * Math.cos(a1);
-    const y1 = cy + r * Math.sin(a1);
-    const x2 = cx + r * Math.cos(a2);
-    const y2 = cy + r * Math.sin(a2);
+    if (a2 <= a1) return []; // gap larger than slice — skip
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    const x1 = round(cx + r * Math.cos(a1));
+    const y1 = round(cy + r * Math.sin(a1));
+    const x2 = round(cx + r * Math.cos(a2));
+    const y2 = round(cy + r * Math.sin(a2));
     const large = endAngle - startAngle > 180 ? 1 : 0;
-    return { d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`, color: s.color };
+    return [{ d: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`, color: s.color }];
   });
   return (
     <svg width={120} height={120} viewBox="0 0 120 120">
@@ -161,8 +164,8 @@ function PieChart({ slices }: { slices: { pct: number; color: string }[] }) {
       ))}
       {/* Donut hole */}
       <circle cx={cx} cy={cy} r={26} fill="rgba(5,12,8,0.95)" />
-      <text x={cx} y={cy - 5} textAnchor="middle" fill="white" fontSize={10} fontWeight="bold">Food</text>
-      <text x={cx} y={cy + 8} textAnchor="middle" fill="#3dd68c" fontSize={9}>42%</text>
+      <text x={cx} y={cy - 5} textAnchor="middle" fill="white" fontSize="10" fontWeight="bold" dominantBaseline="auto">Food</text>
+      <text x={cx} y={cy + 8} textAnchor="middle" fill="#3dd68c" fontSize="9" dominantBaseline="auto">42%</text>
     </svg>
   );
 }
