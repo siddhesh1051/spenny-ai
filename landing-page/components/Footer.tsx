@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
+import Image from "next/image";
 
 const footerLinks = {
   Product: [
@@ -17,34 +18,7 @@ const footerLinks = {
 };
 
 function LogoIcon({ size = 24 }: { size?: number }) {
-  const BG = "#030c07";
-  const G1 = "#3dd68c";
-  const G2 = "#1a8a5a";
-  const G3 = "#0a3d22";
-  const bubble = "M 50,14 A 30,30 0 1,1 24,60 C 18,70 11,78 8,88 C 20,80 32,72 38,68 A 30,30 0 0,1 50,74 A 30,30 0 0,1 50,14 Z";
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="footer-cg" x1="10" y1="5" x2="90" y2="95" gradientUnits="userSpaceOnUse">
-          <stop stopColor={G1} />
-          <stop offset="0.55" stopColor={G2} />
-          <stop offset="1" stopColor={G3} />
-        </linearGradient>
-        <radialGradient id="footer-rg" cx="50%" cy="40%" r="60%">
-          <stop offset="0%" stopColor={G2} stopOpacity="0.2" />
-          <stop offset="100%" stopColor={G2} stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <rect width="100" height="100" rx="22" fill={BG} />
-      <rect width="100" height="100" rx="22" fill="url(#footer-rg)" />
-      <path d={bubble} fill="url(#footer-cg)" opacity="0.15" />
-      <path d={bubble} fill="none" stroke="url(#footer-cg)" strokeWidth="3.2" strokeLinejoin="round" />
-      <circle cx="50" cy="44" r="20" fill="none" stroke={G1} strokeWidth="1.4" strokeOpacity="0.22" />
-      <circle cx="38" cy="44" r="3.8" fill="url(#footer-cg)" />
-      <circle cx="50" cy="44" r="3.8" fill="url(#footer-cg)" />
-      <circle cx="62" cy="44" r="3.8" fill="url(#footer-cg)" />
-    </svg>
-  );
+  return <Image src="/logo.png" alt="Spenny AI" width={size} height={size} className="rounded-lg" />;
 }
 
 export default function Footer({ onOpenWaitlist }: { onOpenWaitlist: () => void }) {

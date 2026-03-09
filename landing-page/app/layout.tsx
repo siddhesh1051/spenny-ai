@@ -10,7 +10,7 @@ const siteDescription =
   "Track expenses the way you speak. Spenny AI's Sage assistant logs expenses from chat, voice, receipts & bank emails — then answers 'where did my money go?' instantly. No forms. Ever.";
 
 const ogImageUrl = `${siteUrl}/og-thumbnail.png`;
-const logoUrl = `${siteUrl}/logo-icon.png`;
+const logoUrl = `${siteUrl}/logo.png`;
 
 const ogImage = {
   url: ogImageUrl,
@@ -94,9 +94,9 @@ export const metadata: Metadata = {
   },
 
   icons: {
-    icon: [{ url: "/logo-icon.png", sizes: "512x512", type: "image/png" }],
-    apple: { url: "/logo-icon.png", sizes: "512x512", type: "image/png" },
-    shortcut: "/logo-icon.png",
+    icon: [{ url: "/logo.png", sizes: "512x512", type: "image/png" }],
+    apple: { url: "/logo.png", sizes: "512x512", type: "image/png" },
+    shortcut: "/logo.png",
   },
 
   manifest: "/manifest.json",
