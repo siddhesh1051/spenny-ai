@@ -357,19 +357,24 @@ export default function GmailSyncPage() {
         return;
       }
 
-      // Pass since_date for first-time syncs; subsequent syncs use last_synced_at from server
-      const isFirstSync = !syncState?.last_synced_at;
-      const { data, error } = await supabase.functions.invoke("sync-gmail-expenses", {
-        body: {
-          gmail_access_token: providerToken,
-          ...(isFirstSync ? { since_date: sinceDate } : {}),
+      // Call the new FastAPI backend for Gmail sync
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string || "";
+      const syncRes = await fetch(`${BACKEND_URL}/api/gmail/sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ access_token: providerToken }),
       });
 
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      if (!syncRes.ok) {
+        const err = await syncRes.json().catch(() => ({}));
+        throw new Error(err?.detail || `Sync failed: HTTP ${syncRes.status}`);
+      }
 
-      const result = data as SyncResult;
+      // Backend runs sync in background; synthesize a minimal result for the UI
+      const result: SyncResult = { inserted: 0, skipped: 0, errors: 0 };
       setSyncResult(result);
       await loadSyncState(session.user.id);
 

@@ -180,13 +180,13 @@ export default function SagePage({
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error("Not authenticated");
 
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string || "";
 
-        // 1. Transcribe audio via edge function
+        // 1. Transcribe audio via FastAPI backend
         const formData = new FormData();
         formData.append("audio", blob, "voice.webm");
 
-        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
+        const transcribeRes = await fetch(`${BACKEND_URL}/api/audio/transcribe`, {
           method: "POST",
           headers: { Authorization: `Bearer ${session.access_token}` },
           body: formData,
@@ -204,14 +204,14 @@ export default function SagePage({
           prev.map((m) => (m.id === msgId ? { ...m, content: transcript } : m))
         );
 
-        // 3. Send transcript to sage-chat
-        const sageRes = await fetch(`${SUPABASE_URL}/functions/v1/sage-chat`, {
+        // 3. Send transcript to Sage agent
+        const sageRes = await fetch(`${BACKEND_URL}/api/sage/chat`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message: transcript }),
+          body: JSON.stringify({ message: transcript, stream: false }),
         });
 
         stopThinking();
@@ -418,11 +418,11 @@ export default function SagePage({
         } = await supabase.auth.getSession();
         if (!session) throw new Error("Not authenticated");
 
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string || "";
         const formData = new FormData();
         formData.append("image", file);
 
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-receipt`, {
+        const res = await fetch(`${BACKEND_URL}/api/receipt/extract`, {
           method: "POST",
           headers: { Authorization: `Bearer ${session.access_token}` },
           body: formData,
@@ -520,14 +520,14 @@ export default function SagePage({
 
         if (!session) throw new Error("Not authenticated");
 
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/sage-chat`, {
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string || "";
+        const res = await fetch(`${BACKEND_URL}/api/sage/chat`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message: trimmed }),
+          body: JSON.stringify({ message: trimmed, stream: false }),
         });
 
         stopThinking();
@@ -540,8 +540,8 @@ export default function SagePage({
         const aiMsg: Message = {
           id: crypto.randomUUID(),
           type: "assistant",
-          content: response.text ?? "",
-          response,
+          content: (response as SageResponse).text ?? "",
+          response: response as SageResponse,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, aiMsg]);
