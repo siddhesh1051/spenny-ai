@@ -1261,10 +1261,11 @@ Please extract all expenses from: '${text}'`,
           isCollapsed={isSidebarCollapsed}
           setIsCollapsed={handleSetCollapsed}
         />
-        <main className={`flex-1 overflow-y-auto min-w-0 ${location.pathname === "/" ? "flex flex-col" : "p-4 md:p-8"}`}>
+        <main className={`flex-1 min-w-0 flex flex-col overflow-hidden`}>
+          {/* ── Sticky top bar (mobile only) ───────────────────────── */}
           {location.pathname === "/" ? (
-            /* Sage: slim bar — hamburger on mobile only, no title */
-            <div className="flex items-center px-3 py-2 shrink-0 md:hidden">
+            /* Sage: slim hamburger bar */
+            <div className="sticky top-0 z-30 flex items-center px-3 py-2 shrink-0 md:hidden bg-background/80 backdrop-blur-md border-b border-border/40">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1274,7 +1275,7 @@ Please extract all expenses from: '${text}'`,
               </Button>
             </div>
           ) : (
-            <div className="flex justify-between items-center mb-4">
+            <div className="sticky top-0 z-30 flex justify-between items-center shrink-0 px-4 py-3 md:px-8 md:py-6 bg-background/80 backdrop-blur-md border-b border-border/40 md:border-none md:bg-transparent md:backdrop-blur-none">
               <div className="flex items-center gap-4">
                 <Button
                   variant="ghost"
@@ -1288,6 +1289,9 @@ Please extract all expenses from: '${text}'`,
               </div>
             </div>
           )}
+
+          {/* ── Scrollable content area ─────────────────────────────── */}
+          <div className={`flex-1 overflow-y-auto min-w-0 ${location.pathname === "/" ? "flex flex-col" : "p-4 md:p-8 md:pt-2"}`}>
           <Toaster />
           {error && (
             <div className="bg-red-500 text-white p-4 rounded-md mb-4 flex justify-between items-center">
@@ -1360,6 +1364,7 @@ Please extract all expenses from: '${text}'`,
               }
             />
           </Routes>
+          </div>
         </main>
       </div>
     </>
