@@ -13,6 +13,7 @@ import {
   Moon,
   Monitor,
   Mail,
+  Send,
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { supabase } from "@/lib/supabase";
@@ -192,6 +193,13 @@ export function Sidebar({
                 </span>
               ) : undefined
             }
+          />
+          <NavItem
+            to="/telegram-integration"
+            icon={Send}
+            label="Telegram"
+            isCollapsed={effectiveCollapsed}
+            onLinkClick={handleLinkClick}
           />
 
           {!effectiveCollapsed && (

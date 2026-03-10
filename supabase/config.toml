@@ -2,6 +2,14 @@
 [functions.whatsapp-webhook]
 verify_jwt = false
 
+# Telegram webhook must accept calls from Telegram servers without a JWT
+[functions.telegram-webhook]
+verify_jwt = false
+
+# telegram-link: called from the web app with user JWT
+[functions.telegram-link]
+verify_jwt = false
+
 # sage-chat: requires a valid user JWT from the web app
 [functions.sage-chat]
 verify_jwt = true
