@@ -37,6 +37,7 @@ import ShareTargetPage from "./pages/ShareTargetPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
 import SagePage from "./pages/SagePage";
 import GmailSyncPage from "./pages/GmailSyncPage";
+import TelegramIntegrationPage from "./pages/TelegramIntegrationPage";
 import Groq from "groq-sdk";
 
 interface Expense {
@@ -190,6 +191,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/analytics": "Analytics",
   "/settings": "Settings",
   "/whatsapp-integration": "WhatsApp Integration",
+  "/telegram-integration": "Telegram Integration",
   "/gmail-sync": "Gmail Sync",
   "/api-keys": "API Keys",
   "/mcp-server": "MCP Server",
@@ -1351,6 +1353,7 @@ Please extract all expenses from: '${text}'`,
               }
             />
             <Route path="/whatsapp-integration" element={<WhatsAppIntegrationPage />} />
+            <Route path="/telegram-integration" element={<TelegramIntegrationPage />} />
             <Route path="/gmail-sync" element={<GmailSyncPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
