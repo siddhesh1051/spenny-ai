@@ -130,14 +130,11 @@ export function Sidebar({
       >
         {/* Logo */}
         <div className={`flex items-center h-14 shrink-0 ${effectiveCollapsed ? "justify-center" : "px-5"}`}>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="w-6 h-6 shrink-0 text-primary"
-          >
-            <path d="M12.378 1.602a.75.75 0 00-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03zM21.75 7.933l-9 5.25v9.334l9-5.25V7.933zM2.25 7.933v9.334l9 5.25v-9.334l-9-5.25z" />
-          </svg>
+          <img
+            src="/logo.png"
+            alt="Spenny AI"
+            className="w-7 h-7 shrink-0 rounded-lg"
+          />
           <span
             className={[
               "ml-2.5 font-bold text-base whitespace-nowrap transition-all duration-300 overflow-hidden",
