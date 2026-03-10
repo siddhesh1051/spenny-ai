@@ -347,10 +347,38 @@ Deno.serve(async (req) => {
       try {
         const emailText = extractEmailText(detail);
         const emailDate = new Date(Number(detail.internalDate)).toISOString();
+        const subject = detail.payload.headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(no subject)";
+        const from = detail.payload.headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "(unknown sender)";
         const expense = await extractExpenseFromEmail(emailText, emailDate, msgId, groqKey);
-        return { msgId, expense };
-      } catch {
-        return { msgId, expense: null };
+        return {
+          msgId,
+          expense,
+          log: {
+            message_id: msgId,
+            from,
+            subject,
+            date: emailDate,
+            email_text: emailText,
+            result: expense
+              ? { matched: true, amount: expense.amount, category: expense.category, description: expense.description }
+              : { matched: false },
+          },
+        };
+      } catch (err) {
+        const subject = detail.payload.headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "(no subject)";
+        const from = detail.payload.headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "(unknown sender)";
+        return {
+          msgId,
+          expense: null,
+          log: {
+            message_id: msgId,
+            from,
+            subject,
+            date: new Date(Number(detail.internalDate)).toISOString(),
+            email_text: "",
+            result: { matched: false, error: err instanceof Error ? err.message : String(err) },
+          },
+        };
       }
     });
 
@@ -390,6 +418,7 @@ Deno.serve(async (req) => {
 
     const skipped = processedIds.length - expensesToInsert.length;
     const cappedNote = cappedAt ? ` (first ${MAX_MESSAGES_PER_SYNC} emails processed — sync again for more)` : "";
+    const scanLog = classifyResults.map((r) => r.log);
 
     return jsonResponse({
       inserted: insertedCount,
@@ -400,6 +429,7 @@ Deno.serve(async (req) => {
       previous_synced_message_ids: Array.from(syncedMessageIds),
       previous_last_synced_at: lastSyncedAt,
       capped: cappedAt,
+      scan_log: scanLog,
       message:
         insertedCount > 0
           ? `Synced ${insertedCount} new expense${insertedCount > 1 ? "s" : ""} from your bank emails!${cappedNote}`
