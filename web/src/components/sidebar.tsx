@@ -47,10 +47,10 @@ function NavItem({ to, end, icon: Icon, label, isCollapsed, onLinkClick, badge }
         isCollapsed
           ? "flex justify-center py-0.5"
           : [
-            "flex items-center px-4 py-2.5 rounded-lg transition-colors duration-150",
+            "group flex items-center px-3 py-2.5 rounded-xl transition-all duration-150 text-sm font-medium",
             isActive
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted text-foreground",
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/70",
           ].join(" ")
       }
     >
@@ -58,18 +58,18 @@ function NavItem({ to, end, icon: Icon, label, isCollapsed, onLinkClick, badge }
         isCollapsed ? (
           <span
             className={[
-              "w-10 h-10 flex items-center justify-center rounded-lg transition-colors duration-150",
+              "w-9 h-9 flex items-center justify-center rounded-xl transition-all duration-150",
               isActive
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-foreground",
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/70",
             ].join(" ")}
           >
-            <Icon className="h-[18px] w-[18px]" />
+            <Icon className="h-[17px] w-[17px]" />
           </span>
         ) : (
           <>
-            <Icon className="h-[18px] w-[18px] shrink-0 opacity-80" />
-            <span className="ml-3 text-sm font-medium whitespace-nowrap">{label}</span>
+            <Icon className={`h-[17px] w-[17px] shrink-0 transition-colors ${isActive ? "text-emerald-500" : "opacity-60 group-hover:opacity-100"}`} />
+            <span className="ml-2.5 whitespace-nowrap">{label}</span>
             {badge && <span className="ml-auto">{badge}</span>}
           </>
         )
@@ -98,14 +98,11 @@ export function Sidebar({
   const { theme, setTheme } = useTheme();
   const userName = user?.user_metadata?.full_name || user?.email;
 
-  // On mobile the sidebar is always shown expanded (never collapsed)
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const effectiveCollapsed = isMobile ? false : isCollapsed;
 
   const handleLinkClick = () => {
-    if (window.innerWidth < 768) {
-      setIsOpen(false);
-    }
+    if (window.innerWidth < 768) setIsOpen(false);
   };
 
   return (
@@ -113,65 +110,61 @@ export function Sidebar({
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden cursor-pointer"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 md:hidden cursor-pointer"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       <div
         className={[
-          "flex flex-col h-full bg-card border-r py-4",
+          "flex flex-col h-full border-r py-3",
           "fixed top-0 left-0 z-50",
           "transition-all duration-300 ease-in-out",
           "md:relative md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full",
-          effectiveCollapsed ? "w-[64px]" : "w-[240px]",
+          effectiveCollapsed ? "w-[60px]" : "w-[232px]",
         ].join(" ")}
+        style={{
+          background: "var(--card)",
+          backgroundImage: "radial-gradient(ellipse 80% 40% at 50% 0%, rgba(22,163,74,0.05) 0%, transparent 70%)",
+        }}
       >
-        {/* Logo */}
-        <div className={`flex items-center h-14 shrink-0 ${effectiveCollapsed ? "justify-center" : "px-5"}`}>
+        {/* ── Logo ── */}
+        <div className={`flex items-center h-13 shrink-0 mb-1 ${effectiveCollapsed ? "justify-center px-0" : "px-4"}`}>
           <img
             src="/logo.png"
             alt="Spenny AI"
             className="w-7 h-7 shrink-0 rounded-lg"
           />
-          <span
+          <div
             className={[
-              "ml-2.5 font-bold text-base whitespace-nowrap transition-all duration-300 overflow-hidden",
-              effectiveCollapsed ? "opacity-0 w-0" : "opacity-100 w-auto",
+              "overflow-hidden transition-all duration-300",
+              effectiveCollapsed ? "opacity-0 w-0 ml-0" : "opacity-100 w-auto ml-2.5",
             ].join(" ")}
           >
-            Spenny AI
-          </span>
+            <span className="font-bold text-[15px] whitespace-nowrap text-foreground leading-none">
+              Spenny<span style={{ color: "#16a34a" }}>AI</span>
+            </span>
+          </div>
         </div>
 
-        {/* Divider */}
-        <div className={`border-t mb-6 ${effectiveCollapsed ? "mx-3" : "mx-4"}`} />
+        {/* ── Divider ── */}
+        <div className={`border-t border-border/50 mb-3 ${effectiveCollapsed ? "mx-2" : "mx-3"}`} />
 
-        {/* Nav */}
-        <nav className={`flex-1 space-y-1 overflow-hidden ${effectiveCollapsed ? "px-2" : "px-4"}`}>
-          <NavItem
-            to="/"
-            end
-            icon={Sparkles}
-            label="Sage"
-            isCollapsed={effectiveCollapsed}
-            onLinkClick={handleLinkClick}
-          />
-          <NavItem
-            to="/transactions"
-            icon={Receipt}
-            label="All Transactions"
-            isCollapsed={effectiveCollapsed}
-            onLinkClick={handleLinkClick}
-          />
-          <NavItem
-            to="/analytics"
-            icon={BarChart2}
-            label="Analytics"
-            isCollapsed={effectiveCollapsed}
-            onLinkClick={handleLinkClick}
-          />
+        {/* ── Nav ── */}
+        <nav className={`flex-1 space-y-0.5 overflow-hidden ${effectiveCollapsed ? "px-1.5" : "px-2"}`}>
+          <NavItem to="/" end icon={Sparkles} label="Sage" isCollapsed={effectiveCollapsed} onLinkClick={handleLinkClick} />
+          <NavItem to="/transactions" icon={Receipt} label="Transactions" isCollapsed={effectiveCollapsed} onLinkClick={handleLinkClick} />
+          <NavItem to="/analytics" icon={BarChart2} label="Analytics" isCollapsed={effectiveCollapsed} onLinkClick={handleLinkClick} />
+
+          {/* ── section label ── */}
+          {!effectiveCollapsed && (
+            <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+              Integrations
+            </p>
+          )}
+          {effectiveCollapsed && <div className="py-1.5" />}
+
           <NavItem
             to="/whatsapp-integration"
             icon={MessageCircle}
@@ -180,9 +173,8 @@ export function Sidebar({
             onLinkClick={handleLinkClick}
             badge={
               !effectiveCollapsed ? (
-                <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500">
-                  <Sparkles className="h-2.5 w-2.5" />
-                  Pro
+                <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Sparkles className="h-2.5 w-2.5" />Pro
                 </span>
               ) : undefined
             }
@@ -195,157 +187,94 @@ export function Sidebar({
             onLinkClick={handleLinkClick}
             badge={
               !effectiveCollapsed ? (
-                <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500">
-                  <Sparkles className="h-2.5 w-2.5" />
-                  Pro
+                <span className="flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Sparkles className="h-2.5 w-2.5" />Pro
                 </span>
               ) : undefined
             }
           />
 
-          {/* MCP Server — commented out, enable when ready
-          {isCollapsed ? (
-            <div
-              className="flex justify-center py-0.5"
-              title="MCP Server (Coming soon)"
-            >
-              <span className="w-10 h-10 flex items-center justify-center rounded-lg opacity-40 cursor-not-allowed select-none">
-                <Server className="h-[18px] w-[18px]" />
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center px-4 py-2.5 rounded-lg opacity-40 cursor-not-allowed select-none pointer-events-none">
-              <Server className="h-[18px] w-[18px] shrink-0" />
-              <span className="ml-3 text-sm font-medium">MCP Server</span>
-              <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                Soon
-              </span>
-            </div>
+          {!effectiveCollapsed && (
+            <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+              Account
+            </p>
           )}
-          */}
+          {effectiveCollapsed && <div className="py-1.5" />}
 
-          <NavItem
-            to="/settings"
-            icon={Settings}
-            label="Settings"
-            isCollapsed={effectiveCollapsed}
-            onLinkClick={handleLinkClick}
-          />
+          <NavItem to="/settings" icon={Settings} label="Settings" isCollapsed={effectiveCollapsed} onLinkClick={handleLinkClick} />
         </nav>
 
-        {/* Bottom section */}
-        <div className={`border-t mt-2 ${effectiveCollapsed ? "mx-3" : "mx-4"}`} />
+        {/* ── Bottom divider ── */}
+        <div className={`border-t border-border/50 mt-2 ${effectiveCollapsed ? "mx-2" : "mx-3"}`} />
 
-        {/* Collapse toggle — desktop only */}
-        <div className={`hidden md:flex items-center py-2 ${effectiveCollapsed ? "px-2" : "px-4"}`}>
-          {/* spacer pushes button right when expanded */}
-          {!effectiveCollapsed && <div className="flex-1" />}
+        {/* ── Collapse toggle (desktop) ── */}
+        <div className={`hidden md:flex items-center py-2 ${effectiveCollapsed ? "justify-center px-0" : "px-3 justify-end"}`}>
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             title={effectiveCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={[
-              "w-8 h-8 shrink-0 flex items-center justify-center rounded-lg",
-              "hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150",
-              effectiveCollapsed ? "mx-auto" : "",
-            ].join(" ")}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150"
           >
-            {effectiveCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
+            {effectiveCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
           </button>
         </div>
 
-        {/* Theme toggle */}
+        {/* ── Theme toggle ── */}
         {effectiveCollapsed ? (
-          <div className="flex justify-center px-2 py-1">
+          <div className="flex justify-center px-0 py-1">
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "system" : "dark")}
               title={`Theme: ${theme}`}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150"
+              className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors duration-150"
             >
-              {theme === "dark" ? (
-                <Moon className="h-[18px] w-[18px]" />
-              ) : theme === "light" ? (
-                <Sun className="h-[18px] w-[18px]" />
-              ) : (
-                <Monitor className="h-[18px] w-[18px]" />
-              )}
+              {theme === "dark" ? <Moon className="h-[15px] w-[15px]" /> : theme === "light" ? <Sun className="h-[15px] w-[15px]" /> : <Monitor className="h-[15px] w-[15px]" />}
             </button>
           </div>
         ) : (
-          <div className="px-4 py-1">
-            <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-muted transition-colors duration-150">
-              <span className="text-sm font-medium text-muted-foreground">Theme</span>
+          <div className="px-3 py-1">
+            <div className="flex items-center justify-between rounded-xl px-2 py-1.5 bg-muted/40">
+              <span className="text-xs font-medium text-muted-foreground">Theme</span>
               <div className="flex items-center gap-0.5">
-                <button
-                  onClick={() => setTheme("light")}
-                  title="Light"
-                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 ${theme === "light" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
-                >
-                  <Sun className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setTheme("system")}
-                  title="System"
-                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 ${theme === "system" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
-                >
-                  <Monitor className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setTheme("dark")}
-                  title="Dark"
-                  className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150 ${theme === "dark" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
-                >
-                  <Moon className="h-3.5 w-3.5" />
-                </button>
+                {(["light", "system", "dark"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    title={t.charAt(0).toUpperCase() + t.slice(1)}
+                    className={`w-6 h-6 flex items-center justify-center rounded-lg transition-colors duration-150 ${theme === t ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {t === "light" ? <Sun className="h-3 w-3" /> : t === "system" ? <Monitor className="h-3 w-3" /> : <Moon className="h-3 w-3" />}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         )}
 
-        {/* User profile */}
-        <div className={`pb-3 ${effectiveCollapsed ? "flex justify-center px-0" : "px-4"}`}>
+        {/* ── User profile ── */}
+        <div className={`pt-1 pb-2 ${effectiveCollapsed ? "flex justify-center px-0" : "px-3"}`}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {effectiveCollapsed ? (
                 <button
-                  className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted transition-colors duration-150"
+                  className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-muted transition-colors duration-150"
                   title={userName}
                 >
-                  <Avatar className="w-7 h-7">
-                    <AvatarImage
-                      src={user?.user_metadata?.avatar_url}
-                      alt={userName}
-                    />
-                    <AvatarFallback className="text-xs">
-                      {userName?.[0]?.toUpperCase()}
-                    </AvatarFallback>
+                  <Avatar className="w-6 h-6">
+                    <AvatarImage src={user?.user_metadata?.avatar_url} alt={userName} />
+                    <AvatarFallback className="text-[10px]">{userName?.[0]?.toUpperCase()}</AvatarFallback>
                   </Avatar>
                 </button>
               ) : (
                 <Button
                   variant="ghost"
-                  className="w-full h-10 justify-start px-2 gap-2 rounded-lg hover:bg-muted"
+                  className="w-full h-10 justify-start px-2 gap-2 rounded-xl hover:bg-muted/70"
                 >
-                  <Avatar className="w-7 h-7 shrink-0">
-                    <AvatarImage
-                      src={user?.user_metadata?.avatar_url}
-                      alt={userName}
-                    />
-                    <AvatarFallback className="text-xs">
-                      {userName?.[0]?.toUpperCase()}
-                    </AvatarFallback>
+                  <Avatar className="w-6 h-6 shrink-0">
+                    <AvatarImage src={user?.user_metadata?.avatar_url} alt={userName} />
+                    <AvatarFallback className="text-[10px]">{userName?.[0]?.toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col items-start overflow-hidden">
-                    <p className="text-xs font-semibold whitespace-nowrap leading-tight">
-                      {userName}
-                    </p>
-                    <p
-                      className="text-[11px] text-muted-foreground max-w-[130px] truncate leading-tight"
-                      title={user?.email}
-                    >
+                    <p className="text-xs font-semibold whitespace-nowrap leading-tight">{userName}</p>
+                    <p className="text-[10px] text-muted-foreground max-w-[130px] truncate leading-tight" title={user?.email}>
                       {user?.email}
                     </p>
                   </div>
@@ -356,10 +285,7 @@ export function Sidebar({
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{userName}</p>
-                  <p
-                    className="text-xs leading-none text-muted-foreground max-w-[180px] truncate"
-                    title={user?.email}
-                  >
+                  <p className="text-xs leading-none text-muted-foreground max-w-[180px] truncate" title={user?.email}>
                     {user?.email}
                   </p>
                 </div>
