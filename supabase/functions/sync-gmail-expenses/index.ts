@@ -307,6 +307,10 @@ Deno.serve(async (req) => {
       });
       if (!listRes.ok) {
         const err = await listRes.text();
+        // 401 = OAuth token expired; signal the frontend to re-auth
+        if (listRes.status === 401) {
+          return jsonResponse({ error: "gmail_token_expired", detail: err }, 400);
+        }
         return jsonResponse({ error: `Gmail API error: ${err}` }, 400);
       }
 

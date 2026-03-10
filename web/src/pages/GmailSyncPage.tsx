@@ -359,6 +359,18 @@ export default function GmailSyncPage() {
     }
   };
 
+  const reauthorizeGmail = async () => {
+    localStorage.setItem("gmail_sync_connecting", "1");
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        scopes: "email profile https://www.googleapis.com/auth/gmail.readonly",
+        queryParams: { access_type: "offline", prompt: "consent" },
+        redirectTo: `${window.location.origin}/gmail-sync`,
+      },
+    });
+  };
+
   const handleSync = async () => {
     cancelUndoCountdown();
     setIsSyncing(true);
@@ -370,8 +382,8 @@ export default function GmailSyncPage() {
 
       const providerToken = session.provider_token;
       if (!providerToken) {
-        toast.error("Gmail not connected. Please connect Gmail first.");
-        setSyncState((s) => s ? { ...s, connected: false } : null);
+        toast.error("Gmail session expired — reconnecting...", { duration: 3000 });
+        setTimeout(reauthorizeGmail, 1000);
         return;
       }
 
@@ -385,6 +397,14 @@ export default function GmailSyncPage() {
       });
 
       if (error) throw new Error(error.message);
+
+      // Gmail OAuth token expired — force re-auth
+      if (data?.error?.includes("gmail_token_expired")) {
+        toast.error("Gmail session expired — reconnecting...", { duration: 3000 });
+        setTimeout(reauthorizeGmail, 1000);
+        return;
+      }
+
       if (data?.error) throw new Error(data.error);
 
       const result = data as SyncResult;
