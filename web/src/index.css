@@ -1,6 +1,19 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Prevent mobile browser chrome (URL bar, nav bar) from causing overflow */
+html, body {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

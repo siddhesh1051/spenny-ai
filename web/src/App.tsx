@@ -1253,7 +1253,7 @@ Please extract all expenses from: '${text}'`,
   return (
     <>
       <PWAInstallPrompt />
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      <div className="flex bg-background text-foreground overflow-hidden" style={{ height: "100dvh" }}>
         <Sidebar
           user={session.user}
           isOpen={isSidebarOpen}

@@ -126,7 +126,7 @@ export default function AuthPage() {
   return (
     <>
       <PWAInstallPrompt />
-      <div className="flex items-center justify-center min-h-screen bg-background px-2 sm:px-0">
+      <div className="flex items-center justify-center bg-background px-2 sm:px-0" style={{ minHeight: "100dvh" }}>
         <Card className="w-full max-w-sm shadow-lg sm:rounded-xl sm:mx-0 mx-2">
           <CardHeader>
             <CardTitle className="text-foreground">Welcome</CardTitle>
