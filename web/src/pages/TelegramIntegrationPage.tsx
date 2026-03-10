@@ -28,7 +28,6 @@ export default function TelegramIntegrationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<LinkStep>("idle");
   const [deepLink, setDeepLink] = useState<string>("");
-  const [tokenExpiresAt, setTokenExpiresAt] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>("");
   const [polling, setPolling] = useState(false);
 
@@ -157,7 +156,6 @@ export default function TelegramIntegrationPage() {
 
       setDeepLink(data.deepLink);
       const expires = new Date(data.expiresAt);
-      setTokenExpiresAt(expires);
       setStep("generated");
       startCountdown(expires);
       startPolling();
