@@ -32,25 +32,9 @@ import {
   CalendarDays,
   Clock,
   X,
-  ChevronDown,
-  ChevronUp,
-  Bug,
 } from "lucide-react";
 
 const UNDO_SECONDS = 10;
-
-interface EmailDebugEntry {
-  gmail_message_id: string;
-  subject: string;
-  from: string;
-  date: string;
-  snippet: string;
-  result: "expense" | "skipped" | "error";
-  skip_reason?: string;
-  amount?: number;
-  category?: string;
-  description?: string;
-}
 
 interface SyncResult {
   inserted: number;
@@ -62,7 +46,6 @@ interface SyncResult {
   processed_message_ids?: string[];
   previous_synced_message_ids?: string[];
   previous_last_synced_at?: string | null;
-  email_debug_log?: EmailDebugEntry[];
 }
 
 interface SyncState {
@@ -200,7 +183,6 @@ export default function GmailSyncPage() {
   const [sinceDate, setSinceDate] = useState(defaultSinceDate);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [showDebugLog, setShowDebugLog] = useState(true);
 
   const handleDeleteAllSynced = async () => {
     setIsDeletingAll(true);
@@ -655,97 +637,6 @@ export default function GmailSyncPage() {
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {/* Debug log — per-email scan results */}
-      {syncResult && syncResult.email_debug_log && syncResult.email_debug_log.length > 0 && (
-        <Card className="border-dashed border-orange-500/40">
-          <CardHeader className="pb-2">
-            <button
-              onClick={() => setShowDebugLog((v) => !v)}
-              className="flex items-center justify-between w-full text-left"
-            >
-              <div className="flex items-center gap-2">
-                <Bug className="h-4 w-4 text-orange-500" />
-                <CardTitle className="text-sm font-semibold text-orange-600 dark:text-orange-400">
-                  Debug Log — {syncResult.email_debug_log.length} emails scanned
-                </CardTitle>
-                <span className="text-xs text-muted-foreground">(temporary, for debugging)</span>
-              </div>
-              {showDebugLog ? (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              )}
-            </button>
-          </CardHeader>
-          {showDebugLog && (
-            <CardContent className="pt-0">
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-muted/60 text-left">
-                      <th className="px-3 py-2 font-medium text-muted-foreground w-6">#</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Result</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">From</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Subject</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Date</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Amount</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Category</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Description</th>
-                      <th className="px-3 py-2 font-medium text-muted-foreground">Skip Reason / Snippet</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {syncResult.email_debug_log.map((entry, idx) => (
-                      <tr
-                        key={entry.gmail_message_id}
-                        className={`border-t ${entry.result === "expense" ? "bg-emerald-500/5" : "bg-muted/20"}`}
-                      >
-                        <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {entry.result === "expense" ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                              <CheckCircle2 className="h-3 w-3" /> Expense
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                              <X className="h-3 w-3" /> Skipped
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 max-w-[140px] truncate" title={entry.from}>
-                          {entry.from}
-                        </td>
-                        <td className="px-3 py-2 max-w-[180px] truncate" title={entry.subject}>
-                          {entry.subject || <span className="italic text-muted-foreground">(no subject)</span>}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                          {new Date(entry.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap font-medium">
-                          {entry.amount != null ? `₹${entry.amount.toLocaleString("en-IN")}` : "—"}
-                        </td>
-                        <td className="px-3 py-2 capitalize text-muted-foreground">
-                          {entry.category ?? "—"}
-                        </td>
-                        <td className="px-3 py-2 max-w-[140px] truncate" title={entry.description}>
-                          {entry.description ?? "—"}
-                        </td>
-                        <td className="px-3 py-2 max-w-[200px] text-muted-foreground" title={entry.skip_reason ?? entry.snippet}>
-                          {entry.result === "skipped"
-                            ? <span className="text-amber-600 dark:text-amber-400">{entry.skip_reason ?? "—"}</span>
-                            : <span className="truncate block">{entry.snippet}</span>
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          )}
-        </Card>
       )}
 
       {/* Privacy notice */}

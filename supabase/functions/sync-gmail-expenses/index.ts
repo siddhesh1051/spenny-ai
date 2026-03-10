@@ -43,19 +43,6 @@ interface ExtractedExpense {
   gmail_message_id: string;
 }
 
-interface EmailDebugEntry {
-  gmail_message_id: string;
-  subject: string;
-  from: string;
-  date: string;
-  snippet: string;
-  result: "expense" | "skipped" | "error";
-  skip_reason?: string;
-  amount?: number;
-  category?: string;
-  description?: string;
-}
-
 // ── Categories ─────────────────────────────────────────────────────────────
 
 const VALID_CATEGORIES = [
@@ -146,18 +133,12 @@ function extractEmailText(msg: GmailMessageDetail): string {
 
 // ── AI: classify a single email ─────────────────────────────────────────────
 
-interface ClassifyResult {
-  expense: ExtractedExpense | null;
-  skip_reason: string | null;
-  raw: { is_expense: boolean; amount?: number; category?: string; description?: string } | null;
-}
-
 async function extractExpenseFromEmail(
   emailText: string,
   emailDate: string,
   gmailMessageId: string,
   groqKey: string
-): Promise<ClassifyResult> {
+): Promise<ExtractedExpense | null> {
   const prompt = `Indian bank debit alert classifier. Extract expense if this is a DEBIT/PAYMENT alert.
 
 EMAIL:
@@ -189,29 +170,22 @@ JSON only. No markdown.`;
     description?: string;
   }>(prompt, groqKey);
 
-  if (!result) return { expense: null, skip_reason: "AI returned no result", raw: null };
-  if (!result.is_expense) return { expense: null, skip_reason: "Not a debit/expense email", raw: result };
-
-  if (typeof result.amount !== "number" || result.amount <= 0) {
-    return { expense: null, skip_reason: `Invalid amount: ${result.amount}`, raw: result };
-  }
-  if (!result.category || !VALID_CATEGORIES.includes(result.category as typeof VALID_CATEGORIES[number])) {
-    return { expense: null, skip_reason: `Invalid category: ${result.category}`, raw: result };
-  }
-  if (!result.description) {
-    return { expense: null, skip_reason: "Missing description", raw: result };
-  }
+  if (!result || !result.is_expense) return null;
+  if (
+    typeof result.amount !== "number" ||
+    result.amount <= 0 ||
+    !result.category ||
+    !VALID_CATEGORIES.includes(result.category as typeof VALID_CATEGORIES[number]) ||
+    !result.description
+  )
+    return null;
 
   return {
-    expense: {
-      amount: result.amount,
-      category: result.category,
-      description: result.description.trim().slice(0, 100),
-      date: emailDate,
-      gmail_message_id: gmailMessageId,
-    },
-    skip_reason: null,
-    raw: result,
+    amount: result.amount,
+    category: result.category,
+    description: result.description.trim().slice(0, 100),
+    date: emailDate,
+    gmail_message_id: gmailMessageId,
   };
 }
 
@@ -373,14 +347,10 @@ Deno.serve(async (req) => {
       try {
         const emailText = extractEmailText(detail);
         const emailDate = new Date(Number(detail.internalDate)).toISOString();
-        const subject = detail.payload.headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
-        const from = detail.payload.headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "";
-        const classify = await extractExpenseFromEmail(emailText, emailDate, msgId, groqKey);
-        return { msgId, expense: classify.expense, skip_reason: classify.skip_reason, subject, from, snippet: detail.snippet ?? "", emailDate };
-      } catch (e) {
-        const subject = detail.payload.headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
-        const from = detail.payload.headers.find((h) => h.name.toLowerCase() === "from")?.value ?? "";
-        return { msgId, expense: null, skip_reason: `Error: ${e instanceof Error ? e.message : String(e)}`, subject, from, snippet: detail.snippet ?? "", emailDate: new Date(Number(detail.internalDate)).toISOString() };
+        const expense = await extractExpenseFromEmail(emailText, emailDate, msgId, groqKey);
+        return { msgId, expense };
+      } catch {
+        return { msgId, expense: null };
       }
     });
 
@@ -388,20 +358,6 @@ Deno.serve(async (req) => {
     const expensesToInsert = classifyResults
       .filter((r) => r.expense !== null)
       .map((r) => ({ ...r.expense!, user_id: userId }));
-
-    // ── Build debug log ────────────────────────────────────────────────────
-    const emailDebugLog: EmailDebugEntry[] = classifyResults.map((r) => ({
-      gmail_message_id: r.msgId,
-      subject: r.subject,
-      from: r.from,
-      date: r.emailDate,
-      snippet: r.snippet.slice(0, 120),
-      result: r.expense ? "expense" : "skipped",
-      skip_reason: r.skip_reason ?? undefined,
-      amount: r.expense?.amount,
-      category: r.expense?.category,
-      description: r.expense?.description,
-    }));
 
     // ── Insert expenses in one batch ──────────────────────────────────────
     let insertedCount = 0;
@@ -444,7 +400,6 @@ Deno.serve(async (req) => {
       previous_synced_message_ids: Array.from(syncedMessageIds),
       previous_last_synced_at: lastSyncedAt,
       capped: cappedAt,
-      email_debug_log: emailDebugLog,
       message:
         insertedCount > 0
           ? `Synced ${insertedCount} new expense${insertedCount > 1 ? "s" : ""} from your bank emails!${cappedNote}`
