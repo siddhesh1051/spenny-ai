@@ -234,7 +234,7 @@ export default function AuthPage() {
 
           {/* Top — wordmark */}
           <div className="relative z-10 flex items-center gap-3">
-            <img src="/logo.png" alt="Spenny AI" className="w-9 h-9 rounded-xl" />
+            <img src="/logo-icon.png" alt="Spenny AI" className="w-9 h-9" />
             <div>
               <span className="text-white font-bold text-lg tracking-tight">
                 Spenny<span style={{ color: "#4ade80" }}>AI</span>
@@ -294,7 +294,7 @@ export default function AuthPage() {
 
           {/* Mobile logo (only visible < lg) */}
           <div className={`lg:hidden flex flex-col items-center mb-8 ${mounted ? "a-fi-0" : "opacity-0"}`}>
-            <img src="/logo.png" alt="Spenny AI" className="w-12 h-12 rounded-2xl mb-2"
+            <img src="/logo-icon.png" alt="Spenny AI" className="w-12 h-12 mb-2"
               style={{ boxShadow: "0 4px 20px rgba(22,163,74,.2)" }}
             />
             <span className="text-lg font-bold tracking-tight text-foreground">

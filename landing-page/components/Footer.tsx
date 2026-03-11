@@ -17,8 +17,8 @@ const footerLinks = {
   ],
 };
 
-function LogoIcon({ size = 24 }: { size?: number }) {
-  return <Image src="/logo.png" alt="Spenny AI" width={size} height={size} className="rounded-lg" />;
+function LogoIcon() {
+  return <Image src="/logos/logo-v2-dark.png" alt="Spenny AI" width={32} height={32} className="w-8 h-8" />;
 }
 
 export default function Footer({ onOpenWaitlist }: { onOpenWaitlist: () => void }) {
@@ -82,8 +82,8 @@ export default function Footer({ onOpenWaitlist }: { onOpenWaitlist: () => void 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-10">
           {/* Brand column */}
           <div className="col-span-2 md:col-span-2">
-            <a href="#" className="flex items-center gap-2 mb-4">
-              <LogoIcon size={24} />
+            <a href="#" className="flex items-center gap-2.5 mb-4">
+              <LogoIcon />
               <span className="font-semibold text-white">
                 Spenny <span className="gradient-text-sage">AI</span>
               </span>

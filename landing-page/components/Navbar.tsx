@@ -35,17 +35,14 @@ export default function Navbar({ onOpenWaitlist }: NavbarProps) {
       >
         <div
           className={`w-full max-w-7xl rounded-2xl transition-all duration-400 ${scrolled
-              ? "glass-card shadow-2xl shadow-black/60"
-              : "bg-transparent border border-transparent"
+            ? "glass-card shadow-2xl shadow-black/60"
+            : "bg-transparent border border-transparent"
             }`}
         >
           <div className="flex items-center justify-between px-5 py-3">
             {/* Logo */}
-            <a href="#" className="flex items-center gap-2.5 cursor-pointer">
-              <Image src="/logo.png" alt="Spenny AI" width={28} height={28} className="rounded-lg" />
-              <span className="font-semibold text-lg tracking-tight text-white">
-                Spenny <span className="gradient-text-sage">AI</span>
-              </span>
+            <a href="#" className="flex items-center cursor-pointer">
+              <Image src="/logos/logo-v2-lockup-full-transparent.png" alt="Spenny AI" width={300} height={75} className="h-12 w-auto" />
             </a>
 
             {/* Desktop Nav */}

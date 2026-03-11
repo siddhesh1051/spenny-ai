@@ -1,23 +1,23 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, Sparkles, X, ArrowRight } from "lucide-react";
+import { Check, Sparkles, X } from "lucide-react";
 
 const SAGE_LIGHT = "#3dd68c";
 const SAGE_GREEN = "#1a8a5a";
 
 const featureRows = [
-  { label: "Sage AI chat",             free: true,  pro: true  },
-  { label: "Natural language logging", free: true,  pro: true  },
-  { label: "Voice input",              free: true,  pro: true  },
-  { label: "Receipt scanning",         free: true,  pro: true  },
-  { label: "Bank statement PDF",       free: true,  pro: true  },
-  { label: "Spending Q&A",             free: true,  pro: true  },
-  { label: "CSV & PDF export",         free: true,  pro: true  },
-  { label: "WhatsApp integration",     free: false, pro: true, highlight: true },
-  { label: "Gmail auto-sync",          free: false, pro: true, highlight: true },
-  { label: "Telegram integration",     free: false, pro: true, highlight: true },
-  { label: "Priority AI model",        free: false, pro: true  },
+  { label: "Sage AI chat", free: true, pro: true },
+  { label: "Natural language logging", free: true, pro: true },
+  { label: "Voice input", free: true, pro: true },
+  { label: "Receipt scanning", free: true, pro: true },
+  { label: "Bank statement PDF", free: true, pro: true },
+  { label: "Spending Q&A", free: true, pro: true },
+  { label: "CSV & PDF export", free: true, pro: true },
+  { label: "WhatsApp integration", free: false, pro: true, highlight: true },
+  { label: "Gmail auto-sync", free: false, pro: true, highlight: true },
+  { label: "Telegram integration", free: true, pro: true },
+  { label: "Priority AI model", free: false, pro: true },
 ];
 
 function Cell({ value, highlight }: { value: boolean | string; highlight?: boolean }) {
@@ -80,7 +80,7 @@ export default function PricingSection({ onOpenWaitlist, onOpenProWaitlist }: { 
             <span className="gradient-text-sage">Upgrade when ready.</span>
           </h2>
           <p className="text-[var(--text-secondary)] max-w-md mx-auto">
-            Sage is free forever. Pro unlocks automatic ingestion via WhatsApp, Gmail, and Telegram.
+            Sage is free forever. Pro unlocks automatic ingestion via WhatsApp and Gmail.
           </p>
         </motion.div>
 

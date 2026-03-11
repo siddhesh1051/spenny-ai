@@ -149,10 +149,10 @@ export default function IntegrationsSection() {
             }}
           >
             <div
-              className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold"
-              style={{ background: "rgba(245,158,11,0.1)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }}
+              className="absolute top-4 right-4 text-[10px] px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: "rgba(26,138,90,0.1)", color: SAGE_LIGHT, border: "1px solid rgba(26,138,90,0.2)" }}
             >
-              ✦ PRO
+              Free
             </div>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(44,165,224,0.12)", border: "1px solid rgba(44,165,224,0.2)" }}>
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#2CA5E0">
@@ -161,7 +161,7 @@ export default function IntegrationsSection() {
             </div>
             <h3 className="text-base font-bold text-white mb-2">Telegram</h3>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-3">
-              Same natural language Sage interface in Telegram. Log, query, and export — coming soon.
+              Same natural language Sage interface in Telegram. Log, query, and export
             </p>
             <div className="flex flex-wrap gap-1.5">
               {["Natural language", "Spending queries", "Coming soon"].map((tag) => (
@@ -253,7 +253,7 @@ export default function IntegrationsSection() {
             </div>
             <h3 className="text-base font-bold text-white mb-2">MCP & API Keys</h3>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-3">
-              Integrate with Claude Desktop via MCP server or build on top of Spenny with programmatic API access.
+              Integrate with Claude Desktop via MCP server or build on top of Spenny with programmatic API access - coming soon.
             </p>
             <ul className="space-y-1.5">
               {["Claude Desktop integration", "RESTful API access", "Free on all plans"].map((item) => (

@@ -133,9 +133,9 @@ export function Sidebar({
         {/* ── Logo ── */}
         <div className={`flex items-center h-13 shrink-0 mb-1 ${effectiveCollapsed ? "justify-center px-0" : "px-4"}`}>
           <img
-            src="/logo.png"
+            src="/logo-icon.png"
             alt="Spenny AI"
-            className="w-7 h-7 shrink-0 rounded-lg"
+            className="w-7 h-7 shrink-0"
           />
           <div
             className={[

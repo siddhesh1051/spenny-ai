@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 
 const APP_NAME = "Spenny AI";
-const ICON_SRC = "/logo.png";
+const ICON_SRC = "/logo-icon.png";
 
 function isMobileDevice() {
   if (typeof window === "undefined") return false;

@@ -322,19 +322,18 @@ footer{margin-top:32px;font-size:11px;color:#bbb;text-align:center}
 
 export function LocalCloverIcon({ size = 32, spinning = false }: { size?: number; spinning?: boolean }) {
   return (
-    <svg
+    <img
+      src="/logo-transparent.png"
+      alt="Sage"
       width={size}
       height={size}
-      viewBox="0 0 48 48"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={spinning ? { animation: "sageSpin 1.4s linear infinite" } : undefined}
-    >
-      <rect x="18" y="1" width="12" height="20" rx="6" fill="#16a34a" />
-      <rect x="27" y="18" width="20" height="12" rx="6" fill="#16a34a" />
-      <rect x="18" y="27" width="12" height="20" rx="6" fill="#16a34a" />
-      <rect x="1" y="18" width="20" height="12" rx="6" fill="#16a34a" />
-    </svg>
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        ...(spinning ? { animation: "sageSpin 1.4s linear infinite" } : {}),
+      }}
+    />
   );
 }
 
