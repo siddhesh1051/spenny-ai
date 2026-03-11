@@ -1265,8 +1265,8 @@ Please extract all expenses from: '${text}'`,
         />
         <main className={`flex-1 min-w-0 flex flex-col overflow-hidden`}>
           {/* ── Sticky top bar (mobile only) ───────────────────────── */}
-          {location.pathname === "/" ? (
-            /* Sage: slim hamburger bar */
+          {(location.pathname === "/" || location.pathname.startsWith("/chat/")) ? (
+            /* Sage / thread: slim hamburger bar (mobile only) */
             <div className="sticky top-0 z-30 flex items-center px-3 py-2 shrink-0 md:hidden bg-background/80 backdrop-blur-md border-b border-border/40">
               <Button
                 variant="ghost"
@@ -1293,7 +1293,7 @@ Please extract all expenses from: '${text}'`,
           )}
 
           {/* ── Scrollable content area ─────────────────────────────── */}
-          <div className={`flex-1 overflow-y-auto min-w-0 ${location.pathname === "/" ? "flex flex-col" : "p-4 md:p-8 md:pt-2"}`}>
+          <div className={`flex-1 overflow-y-auto min-w-0 ${(location.pathname === "/" || location.pathname.startsWith("/chat/")) ? "flex flex-col" : "p-4 md:p-8 md:pt-2"}`}>
           <Toaster />
           {error && (
             <div className="bg-red-500 text-white p-4 rounded-md mb-4 flex justify-between items-center">
@@ -1304,9 +1304,21 @@ Please extract all expenses from: '${text}'`,
             </div>
           )}
           <Routes>
-            {/* Sage is the main page */}
+            {/* Sage welcome screen */}
             <Route
               path="/"
+              element={
+                <SagePage
+                  onSend={() => handleSetCollapsed(true)}
+                  deleteExpense={deleteExpense}
+                />
+              }
+            />
+            {/* Thread view — same component, navigate() with replace:true keeps
+                it mounted because React Router reuses elements of the same type
+                at the same tree position when only the params change. */}
+            <Route
+              path="/chat/:threadId"
               element={
                 <SagePage
                   onSend={() => handleSetCollapsed(true)}
