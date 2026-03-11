@@ -54,13 +54,13 @@ export default function TelegramIntegrationPage() {
     };
   }, []);
 
-  async function checkLinkedStatus(u?: User) {
+  async function checkLinkedStatus(u?: User): Promise<boolean> {
     const currentUser = u || user;
-    if (!currentUser) return;
+    if (!currentUser) return false;
 
     const session = await supabase.auth.getSession();
     const token = session.data.session?.access_token;
-    if (!token) return;
+    if (!token) return false;
 
     try {
       const res = await fetch(
@@ -75,10 +75,12 @@ export default function TelegramIntegrationPage() {
       const data = await res.json();
       if (data.linked) {
         setStep("linked");
+        return true;
       }
     } catch (err) {
       console.error("Status check error:", err);
     }
+    return false;
   }
 
   function stopPolling() {
@@ -118,9 +120,15 @@ export default function TelegramIntegrationPage() {
     stopPolling();
     setPolling(true);
     pollIntervalRef.current = setInterval(async () => {
-      await checkLinkedStatus();
-      // If linked, the checkLinkedStatus sets step="linked" and we stop
-      if (step === "linked") stopPolling();
+      const linked = await checkLinkedStatus();
+      if (linked) {
+        // stop polling — linked state is already set inside checkLinkedStatus
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        setPolling(false);
+      }
     }, 3000);
   }
 
