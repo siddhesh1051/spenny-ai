@@ -340,10 +340,18 @@ export function LocalCloverIcon({ size = 32, spinning = false }: { size?: number
 export function ThinkingIndicator({ step }: { step: number }) {
   return (
     <div className="flex items-start gap-3 py-2 sage-msg-in">
-      <div className="mt-0.5 shrink-0">
-        <LocalCloverIcon size={20} spinning />
+      {/* Remotion-rendered pulsating zoom animation */}
+      <div className="shrink-0" style={{ width: 30, height: 30, marginTop: 2 }}>
+        <video
+          src="/logo-pulse.webm"
+          autoPlay
+          loop
+          muted
+          playsInline
+          style={{ width: 30, height: 30, display: "block" }}
+        />
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pt-1">
         <span key={step} className="text-sm text-green-600 dark:text-green-500 font-medium sage-text-fade">
           {LOADING_STEPS[step % LOADING_STEPS.length]}
         </span>

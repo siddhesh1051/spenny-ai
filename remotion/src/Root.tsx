@@ -5,6 +5,7 @@ import { OgThumbnail } from "./OgThumbnail";
 import { IconCoinChat, LockupCoinChat, SheetCoinChat } from "./LogoAll";
 import { SubtleIconCompare } from "./SubtleIcons";
 import { LogoOptionG } from "./LogoOptions2";
+import { LogoLoader } from "./LogoLoader";
 import {
   LogoV2Dark, LogoV2Light, LogoV2BlackWhite,
   LogoV2WhiteBlack, LogoV2Transparent,
@@ -29,22 +30,25 @@ export const RemotionRoot: React.FC = () => {
         width={2560}
         height={1440}
       />
-      <Still id="OgThumbnail"       component={OgThumbnail}       width={1200} height={630} />
-      <Still id="IconCoinChat"      component={IconCoinChat}      width={512}  height={512} />
-      <Still id="LockupCoinChat"    component={LockupCoinChat}    width={900}  height={260} />
-      <Still id="SheetCoinChat"     component={SheetCoinChat}     width={1200} height={700} />
+      <Still id="OgThumbnail" component={OgThumbnail} width={1200} height={630} />
+      <Still id="IconCoinChat" component={IconCoinChat} width={512} height={512} />
+      <Still id="LockupCoinChat" component={LockupCoinChat} width={900} height={260} />
+      <Still id="SheetCoinChat" component={SheetCoinChat} width={1200} height={700} />
       <Still id="SubtleIconCompare" component={SubtleIconCompare} width={1200} height={420} />
 
+      {/* ── Logo Loader ──────────────────────────────────────────────────── */}
+      <Composition id="LogoLoader" component={LogoLoader} durationInFrames={50} fps={30} width={110} height={110} />
+
       {/* ── Logo V2 ─────────────────────────────────────────────────────── */}
-      <Still id="LogoOptionG"        component={LogoOptionG}        width={512}  height={512} />
-      <Still id="LogoV2Dark"         component={LogoV2Dark}         width={512}  height={512} />
-      <Still id="LogoV2Light"        component={LogoV2Light}        width={512}  height={512} />
-      <Still id="LogoV2BlackWhite"   component={LogoV2BlackWhite}   width={512}  height={512} />
-      <Still id="LogoV2WhiteBlack"   component={LogoV2WhiteBlack}   width={512}  height={512} />
-      <Still id="LogoV2Transparent"  component={LogoV2Transparent}  width={512}  height={512} />
-      <Still id="LogoV2Sheet"        component={LogoV2Sheet}        width={1300} height={440} />
-      <Still id="LogoV2Lockup"            component={LogoV2Lockup}            width={960} height={260} />
-      <Still id="LogoV2LockupTransparent"     component={LogoV2LockupTransparent}     width={960} height={260} />
+      <Still id="LogoOptionG" component={LogoOptionG} width={512} height={512} />
+      <Still id="LogoV2Dark" component={LogoV2Dark} width={512} height={512} />
+      <Still id="LogoV2Light" component={LogoV2Light} width={512} height={512} />
+      <Still id="LogoV2BlackWhite" component={LogoV2BlackWhite} width={512} height={512} />
+      <Still id="LogoV2WhiteBlack" component={LogoV2WhiteBlack} width={512} height={512} />
+      <Still id="LogoV2Transparent" component={LogoV2Transparent} width={512} height={512} />
+      <Still id="LogoV2Sheet" component={LogoV2Sheet} width={1300} height={440} />
+      <Still id="LogoV2Lockup" component={LogoV2Lockup} width={960} height={260} />
+      <Still id="LogoV2LockupTransparent" component={LogoV2LockupTransparent} width={960} height={260} />
       <Still id="LogoV2LockupFullTransparent" component={LogoV2LockupFullTransparent} width={960} height={260} />
     </>
   );
