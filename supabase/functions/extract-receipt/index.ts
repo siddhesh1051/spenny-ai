@@ -29,7 +29,8 @@ function bufferToBase64(buffer: ArrayBuffer): string {
 }
 
 const VALID_CATEGORIES = [
-  "food", "travel", "groceries", "entertainment", "utilities", "rent", "other",
+  "Food & Dining", "Groceries", "Travel", "Entertainment", "Utilities",
+  "Rent", "Shopping", "Education", "Investments", "Healthcare", "Subscriptions", "Other",
 ];
 
 const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
@@ -157,13 +158,18 @@ Today's date: ${today}
 Currency: The user's preferred currency is ${userCurrency}. Assume that currency unless another currency is clearly visible on the receipt.
 
 CATEGORIES — use EXACTLY one of these:
-- food: restaurants, cafes, Swiggy, Zomato, takeout, snacks, delivery
-- groceries: Big Basket, supermarket, vegetables, household items, kirana
-- travel: Uber, Ola, auto, taxi, fuel, parking, flights, hotels, trains, Rapido
-- entertainment: movies, Netflix, Spotify, games, events, BookMyShow
-- utilities: electricity, water, gas, internet, phone bill, Jio, Airtel, BSNL
-- rent: housing rent, PG, accommodation
-- other: anything that doesn't fit above
+- Food & Dining: restaurants, cafes, Swiggy, Zomato, takeout, snacks, delivery, dining out
+- Groceries: Big Basket, supermarket, vegetables, household items, kirana
+- Travel: Uber, Ola, auto, taxi, fuel, parking, flights, hotels, trains, Rapido
+- Entertainment: movies, BookMyShow, games, events, concerts, sports
+- Utilities: electricity, water, gas, internet, phone bill, Jio, Airtel, BSNL
+- Rent: housing rent, PG, accommodation
+- Shopping: clothes, electronics, Myntra, Amazon, Flipkart, accessories
+- Education: courses, books, tuition, school fees, Udemy, Coursera
+- Investments: mutual funds, stocks, SIP, Zerodha, Groww, savings
+- Healthcare: doctor, pharmacy, hospital, medicine, Apollo, gym
+- Subscriptions: Netflix, Spotify, Prime, software subscriptions, annual plans
+- Other: anything that doesn't fit above
 
 EXTRACTION RULES:
 1. For itemized bills: create ONE expense per meaningful line item (skip taxes/discounts as separate items, add them to the item total)

@@ -9,23 +9,33 @@ import {
   } from "lucide-react";
 
 export const CATEGORY_EMOJI: Record<string, string> = {
-    food: "🍔",
-    travel: "✈️",
-    groceries: "🛒",
-    entertainment: "🎬",
-    utilities: "💡",
-    rent: "🏠",
-    other: "📦",
+    "Food & Dining": "🍔",
+    "Groceries": "🛒",
+    "Travel": "✈️",
+    "Entertainment": "🎉",
+    "Utilities": "💡",
+    "Rent": "🏠",
+    "Shopping": "🛍️",
+    "Education": "📚",
+    "Investments": "📈",
+    "Healthcare": "🏥",
+    "Subscriptions": "📱",
+    "Other": "📦",
   };
   
 export const CATEGORY_STYLES: Record<string, string> = {
-    food: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-    travel: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-    groceries: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-    entertainment: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-    utilities: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-    rent: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    other: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+    "Food & Dining": "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    "Groceries": "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    "Travel": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    "Entertainment": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+    "Utilities": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+    "Rent": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+    "Shopping": "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
+    "Education": "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
+    "Investments": "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+    "Healthcare": "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
+    "Subscriptions": "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
+    "Other": "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
   };
   
 

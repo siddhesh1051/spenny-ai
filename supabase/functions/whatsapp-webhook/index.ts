@@ -873,7 +873,7 @@ Today: ${today}
 Current month: ${currentMonth}
 Last month: ${lastMonth}
 
-Available categories: food, travel, groceries, entertainment, utilities, rent, other
+Available categories: Food & Dining, Groceries, Travel, Entertainment, Utilities, Rent, Shopping, Education, Investments, Healthcare, Subscriptions, Other
 
 User question: "${question}"
 
@@ -882,7 +882,7 @@ Extract these fields and return ONLY valid JSON:
 {
   "start_date": "YYYY-MM-DD" or null,
   "end_date": "YYYY-MM-DD" or null,
-  "category": "food" | "travel" | "groceries" | "entertainment" | "utilities" | "rent" | "other" | null,
+  "category": "Food & Dining" | "Groceries" | "Travel" | "Entertainment" | "Utilities" | "Rent" | "Shopping" | "Education" | "Investments" | "Healthcare" | "Subscriptions" | "Other" | null,
   "min_amount": number or null,
   "max_amount": number or null,
   "sort_by": "date" | "amount",
@@ -1191,13 +1191,18 @@ CRITICAL: Find EVERY expense mentioned, even multiple in one sentence.
 Input: "${text}"
 
 CATEGORIES (use ONLY these):
-- food: restaurants, cafes, snacks, dining, takeout
-- groceries: supermarket, vegetables, household items
-- travel: fuel, parking, uber, auto, bus, train, flights, hotels
-- entertainment: movies, games, Netflix, hobbies, sports
-- utilities: electricity, water, gas, internet, phone bill
-- rent: housing rent, accommodation
-- other: anything else
+- Food & Dining: restaurants, cafes, snacks, dining, takeout, delivery
+- Groceries: supermarket, vegetables, household items, kirana
+- Travel: fuel, parking, uber, auto, bus, train, flights, hotels
+- Entertainment: movies, games, hobbies, sports, concerts, events
+- Utilities: electricity, water, gas, internet, phone bill
+- Rent: housing rent, PG, accommodation
+- Shopping: clothes, electronics, online shopping, accessories
+- Education: courses, books, tuition, school fees
+- Investments: mutual funds, stocks, SIP, savings
+- Healthcare: doctor, pharmacy, hospital, medicine, gym
+- Subscriptions: Netflix, Spotify, Prime, software subscriptions
+- Other: anything else
 
 DESCRIPTION RULES:
 - Short and clean (max 50 chars)
@@ -1275,7 +1280,7 @@ Return ONLY valid JSON array (no markdown, no explanation):
       typeof e.amount === "number" &&
       e.amount > 0 &&
       typeof e.category === "string" &&
-      ["food", "travel", "groceries", "entertainment", "utilities", "rent", "other"].includes(e.category) &&
+      ["Food & Dining", "Groceries", "Travel", "Entertainment", "Utilities", "Rent", "Shopping", "Education", "Investments", "Healthcare", "Subscriptions", "Other"].includes(e.category) &&
       typeof e.description === "string" &&
       e.description.trim().length > 0
     )
@@ -1883,13 +1888,18 @@ Deno.serve(async (req: Request) => {
           });
 
           const categoryEmoji: Record<string, string> = {
-            food: "🍔",
-            travel: "✈️",
-            groceries: "🛒",
-            entertainment: "🎉",
-            utilities: "💡",
-            rent: "🏠",
-            other: "🤷",
+            "Food & Dining": "🍔",
+            "Groceries": "🛒",
+            "Travel": "✈️",
+            "Entertainment": "🎉",
+            "Utilities": "💡",
+            "Rent": "🏠",
+            "Shopping": "🛍️",
+            "Education": "📚",
+            "Investments": "📈",
+            "Healthcare": "🏥",
+            "Subscriptions": "📱",
+            "Other": "🤷",
           };
 
           const breakdown = Object.entries(byCategory)

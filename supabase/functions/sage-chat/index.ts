@@ -102,7 +102,7 @@ async function classifyIntent(msg: string, key: string): Promise<Intent> {
   if (
     /(how\s+much|total|summary|show|list|what\s+did).*(spent?|expense|cost)/i.test(t) ||
     /(where|breakdown|analysis|report).*(money|spend|expense)/i.test(t) ||
-    /my\s+(food|travel|grocery|groceries|entertainment|utilities|rent)\s+expense/i.test(t)
+    /my\s+(food|dining|travel|grocery|groceries|entertainment|utilities|rent|shopping|education|investments|healthcare|subscriptions)\s+expense/i.test(t)
   ) return "query";
 
   // Fast path: insights
@@ -157,13 +157,13 @@ Last 7 days: ${sevenAgo.toISOString().split("T")[0]} to ${today}
 Last 30 days: ${thirtyAgo.toISOString().split("T")[0]} to ${today}
 
 Extract query filters from: "${question}"
-Available categories: food, travel, groceries, entertainment, utilities, rent, other
+Available categories: Food & Dining, Groceries, Travel, Entertainment, Utilities, Rent, Shopping, Education, Investments, Healthcare, Subscriptions, Other
 
 Return ONLY valid JSON (no markdown):
 {
   "start_date": "YYYY-MM-DD" or null,
   "end_date": "YYYY-MM-DD" or null,
-  "category": "food"|"travel"|"groceries"|"entertainment"|"utilities"|"rent"|"other" or null,
+  "category": "Food & Dining"|"Groceries"|"Travel"|"Entertainment"|"Utilities"|"Rent"|"Shopping"|"Education"|"Investments"|"Healthcare"|"Subscriptions"|"Other" or null,
   "min_amount": number or null,
   "max_amount": number or null,
   "sort_by": "date" or "amount",
@@ -260,7 +260,10 @@ The root "layout" must always be a "column" node.
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-const VALID_CATEGORIES = ["food", "travel", "groceries", "entertainment", "utilities", "rent", "other"];
+const VALID_CATEGORIES = [
+  "Food & Dining", "Groceries", "Travel", "Entertainment", "Utilities",
+  "Rent", "Shopping", "Education", "Investments", "Healthcare", "Subscriptions", "Other",
+];
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
@@ -361,14 +364,19 @@ Return ONLY valid JSON (no markdown):
       const parsed = await groqJSON<ParsedExpense[]>(
         `Extract ALL expenses from this message: "${message}"
 
-Categories (use ONLY these): food, travel, groceries, entertainment, utilities, rent, other
-- food: restaurants, cafes, takeout, delivery, snacks
-- groceries: supermarket, vegetables, household items
-- travel: fuel, uber, auto, taxi, bus, train, flights, hotels, parking
-- entertainment: movies, games, netflix, spotify, hobbies
-- utilities: electricity, water, gas, internet, phone bill
-- rent: rent, accommodation
-- other: anything else
+Categories (use ONLY these): Food & Dining, Groceries, Travel, Entertainment, Utilities, Rent, Shopping, Education, Investments, Healthcare, Subscriptions, Other
+- Food & Dining: restaurants, cafes, takeout, delivery, snacks, dining out
+- Groceries: supermarket, vegetables, household items, kirana
+- Travel: fuel, uber, auto, taxi, bus, train, flights, hotels, parking
+- Entertainment: movies, games, hobbies, sports, concerts, events
+- Utilities: electricity, water, gas, internet, phone bill
+- Rent: housing rent, PG, accommodation
+- Shopping: clothes, electronics, online shopping, accessories
+- Education: courses, books, tuition, school fees
+- Investments: mutual funds, stocks, SIP, savings
+- Healthcare: doctor, pharmacy, hospital, medicine, gym
+- Subscriptions: Netflix, Spotify, Prime, software subscriptions
+- Other: anything else
 
 Return ONLY a JSON array (no markdown):
 [{"amount": number, "category": string, "description": string}]

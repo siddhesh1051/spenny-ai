@@ -52,13 +52,18 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const categories: { [key: string]: string } = {
-  food: "🍔",
-  travel: "✈️",
-  groceries: "🛒",
-  entertainment: "🎉",
-  utilities: "💡",
-  rent: "🏠",
-  other: "🤷",
+  "Food & Dining": "🍔",
+  "Groceries": "🛒",
+  "Travel": "✈️",
+  "Entertainment": "🎉",
+  "Utilities": "💡",
+  "Rent": "🏠",
+  "Shopping": "🛍️",
+  "Education": "📚",
+  "Investments": "📈",
+  "Healthcare": "🏥",
+  "Subscriptions": "📱",
+  "Other": "🤷",
 };
 
 interface Expense {

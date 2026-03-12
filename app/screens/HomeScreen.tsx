@@ -93,13 +93,18 @@ function parseExpensesFromJSON(text: string): PendingExpense[] | null {
 }
 
 const CATEGORY_EMOJI: Record<string, string> = {
-  food: "🍔",
-  travel: "✈️",
-  groceries: "🛒",
-  entertainment: "🎉",
-  utilities: "💡",
-  rent: "🏠",
-  other: "🤷",
+  "Food & Dining": "🍔",
+  "Groceries": "🛒",
+  "Travel": "✈️",
+  "Entertainment": "🎉",
+  "Utilities": "💡",
+  "Rent": "🏠",
+  "Shopping": "🛍️",
+  "Education": "📚",
+  "Investments": "📈",
+  "Healthcare": "🏥",
+  "Subscriptions": "📱",
+  "Other": "🤷",
 };
 
 export default function HomeScreen({ expenses, userGroqKey, onAddExpenses, isLoading }: HomeScreenProps) {
@@ -284,7 +289,7 @@ Extract ALL expenses from: '${text}'
 Return a JSON array with this exact format:
 [{"amount": number, "category": string, "description": string}]
 
-Categories: food, travel, groceries, entertainment, utilities, rent, other
+Categories: Food & Dining, Groceries, Travel, Entertainment, Utilities, Rent, Shopping, Education, Investments, Healthcare, Subscriptions, Other
 Keep descriptions short (max 50 chars). Return ONLY valid JSON array.`;
 
       const response = await callGroqText(apiKey, prompt);
@@ -351,7 +356,7 @@ Keep descriptions short (max 50 chars). Return ONLY valid JSON array.`;
     setIsProcessing(true);
     Toast.show({ type: "info", text1: "Processing image...", text2: "AI is analyzing your receipt." });
     try {
-      const prompt = "You are an AI that extracts structured expense data from an image of a receipt or bill. Return a JSON array of {amount, category, description} objects. Categories: food, travel, groceries, entertainment, utilities, rent, other. Return ONLY valid JSON array.";
+      const prompt = "You are an AI that extracts structured expense data from an image of a receipt or bill. Return a JSON array of {amount, category, description} objects. Categories: Food & Dining, Groceries, Travel, Entertainment, Utilities, Rent, Shopping, Education, Investments, Healthcare, Subscriptions, Other. Return ONLY valid JSON array.";
       const response = await callGroqVision(apiKey, prompt, base64, mimeType);
       const expenses = parseExpensesFromJSON(response);
       if (expenses && expenses.length > 0) {
@@ -400,7 +405,7 @@ Keep descriptions short (max 50 chars). Return ONLY valid JSON array.`;
   const extractExpensesFromPDF = async (base64: string) => {
     const apiKey = getApiKey();
     try {
-      const prompt = `You are an AI that extracts expense data from bank statement PDFs. Extract only DEBIT transactions (money going OUT). Return a JSON array of {amount, category, description, date} objects. Categories: food, travel, groceries, entertainment, utilities, rent, other. Keep descriptions short. date should be ISO string. Return ONLY valid JSON array.`;
+      const prompt = `You are an AI that extracts expense data from bank statement PDFs. Extract only DEBIT transactions (money going OUT). Return a JSON array of {amount, category, description, date} objects. Categories: Food & Dining, Groceries, Travel, Entertainment, Utilities, Rent, Shopping, Education, Investments, Healthcare, Subscriptions, Other. Keep descriptions short. date should be ISO string. Return ONLY valid JSON array.`;
       const response = await callGroqVision(apiKey, prompt, base64, "application/pdf");
       const expenses = parseExpensesFromJSON(response);
       if (expenses && expenses.length > 0) {

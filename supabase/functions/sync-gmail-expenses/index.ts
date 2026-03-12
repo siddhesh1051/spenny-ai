@@ -45,7 +45,10 @@ interface ExtractedExpense {
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const VALID_CATEGORIES = ["food", "travel", "groceries", "entertainment", "utilities", "rent", "other"] as const;
+const VALID_CATEGORIES = [
+  "Food & Dining", "Groceries", "Travel", "Entertainment", "Utilities",
+  "Rent", "Shopping", "Education", "Investments", "Healthcare", "Subscriptions", "Other",
+] as const;
 type Category = typeof VALID_CATEGORIES[number];
 
 const MAX_MESSAGES_PER_SYNC = 500;
@@ -317,7 +320,7 @@ ${emailText.slice(0, 1500)}
 
 Rules:
 - DEBIT only: debited/paid/sent/spent/withdrawn/charged. IGNORE: credited/refund/cashback/OTP/salary.
-- amount: number in INR (no symbol). description: merchant ≤35 chars. category: exactly one of food|groceries|travel|entertainment|utilities|rent|other
+- amount: number in INR (no symbol). description: merchant ≤35 chars. category: exactly one of Food & Dining|Groceries|Travel|Entertainment|Utilities|Rent|Shopping|Education|Investments|Healthcare|Subscriptions|Other
 
 If NOT a debit → {"is_expense":false}
 If debit → {"is_expense":true,"amount":<number>,"category":"<cat>","description":"<merchant>"}
