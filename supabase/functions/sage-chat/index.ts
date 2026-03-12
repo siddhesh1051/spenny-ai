@@ -93,7 +93,9 @@ async function classifyIntent(msg: string, key: string): Promise<Intent> {
     /paid\s+\d+/i.test(t) ||
     /\d+\s+(on|for)\s+\w+/i.test(t) ||
     /bought\s+.+\s+for\s+\d+/i.test(t) ||
-    /^\d+\s+(rs|₹|inr|rupees?)/i.test(t)
+    /^\d+\s+(rs|₹|inr|rupees?)/i.test(t) ||
+    /^add\s+\d+\s+(for|on)\s+\w+/i.test(t) ||
+    /^add\s+(rs\.?|₹|inr|rupees?)?\s*\d+\s+(for|on)\s+\w+/i.test(t)
   ) return "expense";
 
   // Fast path: query
@@ -590,9 +592,9 @@ ${UI_COMPONENT_CATALOG}
 ## Your task
 Design the best UI layout to answer this question. You decide:
 - Which metric summary cards to show (and what values)
-- Whether to show a chart (donut for ≤5 categories, bars for >5) — skip if only 1 category
+- Whether to show a chart — skip if only 1 category
 - Whether to show a table (ONLY if user explicitly asked for list/transactions)
-- What insight text to write (always include an "insight" block with 2 sentences: answer + observation)
+- What insight text to write (always include an "insight" block with 2 sentences: answer + observation) - Should be at last always.
 - How to label sections
 
 Use the exact JSON schema from the catalog. Return ONLY valid JSON (no markdown):
@@ -731,11 +733,11 @@ ${UI_COMPONENT_CATALOG}
 Design the best insight dashboard UI for this user. You decide:
 - Which metric cards to highlight (pick the most relevant 2-4 from the data above)
 - Whether and how to label sections with "subheading" blocks
-- Whether to show a chart (donut for ≤5 categories, bars for >5 categories) — recommended for insights
-- What actionable insights to write in an "insight" block (2-3 sentences with real numbers, encouraging, practical)
+- Whether to show a chart — recommended for insights
+- What actionable insights to write in an "insight" block (2-3 sentences with real numbers, encouraging, practical) - Should be at last always.
 - The order and grouping of sections
 
-Do NOT include a table. Keep it dashboard-like and informative.
+Keep it dashboard-like and informative.
 Return ONLY valid JSON (no markdown):
 { "layout": { "kind": "column", "children": [ ...nodes ] } }`,
         groqKey,
@@ -761,7 +763,7 @@ Return ONLY valid JSON (no markdown):
             { kind: "block", style: "subheading", text: "Spending breakdown (90 days)" },
             catBreakdown.length > 1 ? {
               kind: "visual",
-              variant: catBreakdown.length <= 5 ? "donut" : "bars",
+              variant: "donut",
               x: "name",
               y: "value",
               points: catBreakdown.map(c => ({ label: c.category, value: c.total, share: c.percentage })),

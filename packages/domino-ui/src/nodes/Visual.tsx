@@ -96,17 +96,20 @@ export function Visual({ node }: { node: UiVisualNode }) {
               <Tooltip content={<ChartTip />} />
             </PieChart>
           ) : (
-            <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <BarChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+              onMouseLeave={() => setActiveIndex(null)}>
               <CartesianGrid stroke="color-mix(in srgb, var(--muted-foreground) 12%, transparent)" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8}
                 tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
               <YAxis tickLine={false} axisLine={false} tickMargin={4}
                 tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
-              <Tooltip content={<ChartTip />} />
-              <Bar dataKey="value" radius={[4, 4, 2, 2]} maxBarSize={40}>
+              <Tooltip content={<ChartTip />} cursor={false} />
+              <Bar dataKey="value" radius={[4, 4, 2, 2]} maxBarSize={40}
+                onMouseEnter={(_: unknown, idx: number) => setActiveIndex(idx)}>
                 {data.map((entry, index) => (
                   <Cell key={`bar-${entry.label}-${index}`}
-                    fill={COLORS[index % COLORS.length]} fillOpacity={0.75} />
+                    fill={COLORS[index % COLORS.length]}
+                    fillOpacity={activeIndex === null || activeIndex === index ? 1 : 0.35} />
                 ))}
               </Bar>
             </BarChart>
