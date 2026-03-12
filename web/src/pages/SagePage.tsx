@@ -38,7 +38,7 @@ import {
 import { ThreadSwitcher } from "@/components/sage/ThreadSwitcher";
 import { AllThreadsModal } from "@/components/sage/AllThreadsModal";
 import { DeleteConfirmModal } from "@/components/sage/DeleteConfirmModal";
-import { QUICK_QUESTIONS } from "@/constants";
+import { QUICK_QUESTIONS, type PromptType } from "@/constants";
 import { formatDuration } from "@/utils/sage";
 import {
   useChatThreads,
@@ -101,6 +101,7 @@ export default function SagePage({
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingStep, setThinkingStep] = useState(0);
+  const [thinkingPromptType, setThinkingPromptType] = useState<PromptType>("text");
   const [userName, setUserName] = useState("there");
   const [lastMsgVisible, setLastMsgVisible] = useState(false);
   const [chatMode, setChatMode] = useState(false);
@@ -403,6 +404,7 @@ export default function SagePage({
       setMessages((prev) => [...prev, voiceMsg]);
       setIsThinking(true);
       setThinkingStep(0);
+      setThinkingPromptType("audio");
       setLastMsgVisible(false);
 
       let step = 0;
@@ -641,6 +643,7 @@ export default function SagePage({
       setScanningMsgId(msgId);
       setIsThinking(true);
       setThinkingStep(0);
+      setThinkingPromptType("image");
       setLastMsgVisible(false);
 
       let step = 0;
@@ -747,10 +750,13 @@ export default function SagePage({
         content: trimmed,
         timestamp: new Date(),
       };
+      const isLogIntent = /\b(log|add|spent|paid|bought|record|track|expense)\b/i.test(trimmed);
+
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
       setIsThinking(true);
       setThinkingStep(0);
+      setThinkingPromptType(isLogIntent ? "log" : "text");
       setLastMsgVisible(false);
 
       let step = 0;
@@ -1232,7 +1238,7 @@ export default function SagePage({
                   );
                 })}
 
-                {isThinking && <ThinkingIndicator step={thinkingStep} />}
+                {isThinking && <ThinkingIndicator step={thinkingStep} promptType={thinkingPromptType} />}
                 <div ref={messagesEndRef} />
               </div>
             )}

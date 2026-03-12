@@ -4,7 +4,7 @@ import { Check, Copy, Download, FileSpreadsheet, LucideImage, Maximize2, Pause, 
 import { cn } from "@/lib/utils";
 import type { CategoryItem, LoggedExpense, DbExpense, MetricItem, VoiceData, ReceiptData, SageResponse } from "./types";
 import { Skeleton } from "../ui/Skeleton";
-import { CATEGORY_EMOJI, CATEGORY_STYLES, LOADING_STEPS } from "@/constants";
+import { CATEGORY_EMOJI, CATEGORY_STYLES, LOADING_STEPS_BY_TYPE, type PromptType } from "@/constants";
 import { formatDuration } from "@/utils/sage";
 import { createPortal } from "react-dom";
 import { UiRenderer } from "domino-ui";
@@ -337,10 +337,10 @@ export function LocalCloverIcon({ size = 32, spinning = false }: { size?: number
   );
 }
 
-export function ThinkingIndicator({ step }: { step: number }) {
+export function ThinkingIndicator({ step, promptType = "text" }: { step: number; promptType?: PromptType }) {
+  const steps = LOADING_STEPS_BY_TYPE[promptType];
   return (
     <div className="flex items-start gap-3 py-2 sage-msg-in">
-      {/* Remotion-rendered pulsating zoom animation */}
       <div className="shrink-0" style={{ width: 30, height: 30, marginTop: 2 }}>
         <video
           src="/logo-pulse.webm"
@@ -353,7 +353,7 @@ export function ThinkingIndicator({ step }: { step: number }) {
       </div>
       <div className="flex-1 min-w-0 pt-1">
         <span key={step} className="text-sm text-green-600 dark:text-green-500 font-medium sage-text-fade">
-          {LOADING_STEPS[step % LOADING_STEPS.length]}
+          {steps[step % steps.length]}
         </span>
         <div className="mt-2.5 space-y-2">
           <Skeleton className="h-3 w-3/4 rounded" />

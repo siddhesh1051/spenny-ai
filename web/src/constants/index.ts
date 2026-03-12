@@ -4,10 +4,8 @@ import {
     UtensilsCrossed,
     Car,
     ShoppingCart,
-    PiggyBank,
     BarChart2,
     CalendarDays,
-    Repeat2
   } from "lucide-react";
 
 export const CATEGORY_EMOJI: Record<string, string> = {
@@ -31,23 +29,67 @@ export const CATEGORY_STYLES: Record<string, string> = {
   };
   
 
-export const LOADING_STEPS = [
-    "Scanning your receipt…",
-    "Transcribing your voice…",
-    "Scanning your expenses…",
-    "Analyzing spending patterns…",
-    "Crunching the numbers…",
-    "Generating insights…",
-  ];
+export type PromptType = "text" | "audio" | "image" | "pdf" | "log";
+
+const LOADING_STEPS_COMMON = [
+  "Analyzing spending patterns…",
+  "Crunching the numbers…",
+  "Generating insights…",
+  "Thinking through your finances…",
+];
+
+const LOADING_STEPS_TEXT = [
+  "Reading your question…",
+  "Searching your expense history…",
+  "Connecting the dots…",
+  ...LOADING_STEPS_COMMON,
+];
+
+const LOADING_STEPS_AUDIO = [
+  "Transcribing your voice…",
+  "Processing what you said…",
+  "Parsing your speech…",
+  ...LOADING_STEPS_COMMON,
+];
+
+const LOADING_STEPS_IMAGE = [
+  "Scanning your receipt…",
+  "Extracting line items…",
+  "Reading the amounts…",
+  "Identifying the merchant…",
+  ...LOADING_STEPS_COMMON,
+];
+
+const LOADING_STEPS_PDF = [
+  "Parsing your document…",
+  "Extracting transactions…",
+  "Reading statement pages…",
+  "Categorising entries…",
+  ...LOADING_STEPS_COMMON,
+];
+
+const LOADING_STEPS_LOG = [
+  "Logging your expense…",
+  "Saving the entry…",
+  "Tagging the category…",
+  "Updating your records…",
+  ...LOADING_STEPS_COMMON,
+];
+
+export const LOADING_STEPS_BY_TYPE: Record<PromptType, string[]> = {
+  text: LOADING_STEPS_TEXT,
+  audio: LOADING_STEPS_AUDIO,
+  image: LOADING_STEPS_IMAGE,
+  pdf: LOADING_STEPS_PDF,
+  log: LOADING_STEPS_LOG,
+};
   
  export const QUICK_QUESTIONS = [
     { icon: BarChart2, text: "What did I spend most on this month?" },
     { icon: TrendingUp, text: "How does this month compare to last?" },
     { icon: UtensilsCrossed, text: "Show my food & dining expenses" },
     { icon: TrendingDown, text: "Where can I cut down spending?" },
-    { icon: Repeat2, text: "Show all recurring subscriptions" },
     { icon: ShoppingCart, text: "What did I spend on groceries?" },
-    { icon: PiggyBank, text: "How much have I saved this month?" },
     { icon: CalendarDays, text: "Break down expenses by week" },
     { icon: Car, text: "How much did I spend on travel?" },
   ];
