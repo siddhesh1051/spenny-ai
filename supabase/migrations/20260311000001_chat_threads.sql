@@ -48,8 +48,18 @@ alter table public.chat_threads  enable row level security;
 alter table public.chat_messages enable row level security;
 
 -- Policies: users can only access their own rows
-create policy "threads: owner only" on public.chat_threads
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+do $$ begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'chat_threads' and policyname = 'threads: owner only'
+  ) then
+    execute 'create policy "threads: owner only" on public.chat_threads for all using (auth.uid() = user_id) with check (auth.uid() = user_id)';
+  end if;
+end $$;
 
-create policy "messages: owner only" on public.chat_messages
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+do $$ begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'chat_messages' and policyname = 'messages: owner only'
+  ) then
+    execute 'create policy "messages: owner only" on public.chat_messages for all using (auth.uid() = user_id) with check (auth.uid() = user_id)';
+  end if;
+end $$;

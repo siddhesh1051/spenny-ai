@@ -45,6 +45,7 @@ import {
   loadThreadMessages,
   saveMessage,
   deriveTitle,
+  removeItemsFromMessageResponse,
 } from "@/hooks/useChatThreads";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,14 +75,6 @@ export default function SagePage({
   const { formatAmount } = useCurrency();
   const navigate = useNavigate();
   const { threadId: routeThreadId } = useParams<{ threadId?: string }>();
-
-  const onUndoLoggedExpenses = useCallback(
-    async (ids: string[]) => {
-      if (!deleteExpense) return;
-      for (const id of ids) await deleteExpense(id);
-    },
-    [deleteExpense]
-  );
 
   // ── Thread state ──
   const { threads, hasMore, loadingThreads, loadMore, createThread, deleteThread, refreshThreads } =
@@ -393,7 +386,6 @@ export default function SagePage({
 
       const audioUrl = URL.createObjectURL(blob);
       const msgId = crypto.randomUUID();
-
       const voiceMsg: Message = {
         id: msgId,
         type: "user",
@@ -469,8 +461,9 @@ export default function SagePage({
 
         if (threadId) {
           navigate(`/chat/${threadId}`, { replace: true });
-          persistMsg(threadId, { ...updatedVoiceMsg, content: transcript });
-          persistMsg(threadId, aiMsg);
+          persistMsg(threadId, { ...updatedVoiceMsg, content: transcript }).then(() =>
+            persistMsg(threadId, aiMsg)
+          );
           maybeSharpenTitle(threadId, transcript, response.text ?? "");
         }
       } catch (err) {
@@ -630,7 +623,6 @@ export default function SagePage({
 
       const imageUrl = URL.createObjectURL(file);
       const msgId = crypto.randomUUID();
-
       const receiptMsg: Message = {
         id: msgId,
         type: "user",
@@ -689,8 +681,9 @@ export default function SagePage({
 
         if (threadId) {
           navigate(`/chat/${threadId}`, { replace: true });
-          persistMsg(threadId, { ...receiptMsg, receipt: { imageUrl: "", fileName: file.name } });
-          persistMsg(threadId, aiMsg);
+          persistMsg(threadId, { ...receiptMsg, receipt: { imageUrl: "", fileName: file.name } }).then(() =>
+            persistMsg(threadId, aiMsg)
+          );
           maybeSharpenTitle(threadId, `Receipt: ${file.name}`, response.text ?? "");
         }
       } catch (err) {
@@ -801,12 +794,10 @@ export default function SagePage({
         setTimeout(() => setLastMsgVisible(true), 60);
 
         if (threadId) {
-          // Navigate immediately after response renders — before the DB writes
-          // so the URL updates without any perceptible delay.
           navigate(`/chat/${threadId}`, { replace: true });
-          // Fire-and-forget persistence — don't block the UI on these awaits.
-          persistMsg(threadId, userMsg);
-          persistMsg(threadId, aiMsg);
+          persistMsg(threadId, userMsg).then(() =>
+            persistMsg(threadId, aiMsg)
+          );
           maybeSharpenTitle(threadId, trimmed, response.text ?? "");
         }
       } catch (err) {
@@ -1175,7 +1166,17 @@ export default function SagePage({
                               <AssistantResponse
                                 response={msg.response}
                                 visible={visible}
-                                onUndoLoggedExpenses={deleteExpense ? onUndoLoggedExpenses : undefined}
+                                onUndoLoggedExpenses={deleteExpense ? async (ids: string[]) => {
+                                  for (const id of ids) await deleteExpense(id);
+                                  const updated = await removeItemsFromMessageResponse(msg.id, ids);
+                                  if (updated) {
+                                    setMessages((prev) =>
+                                      prev.map((m) =>
+                                        m.id === msg.id ? { ...m, response: updated } : m
+                                      )
+                                    );
+                                  }
+                                } : undefined}
                               />
                             ) : (
                               <div

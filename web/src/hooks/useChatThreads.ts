@@ -92,12 +92,13 @@ export function useChatThreads() {
   return { threads, hasMore, loadingThreads, loadMore, createThread, updateThreadTitle, deleteThread, refreshThreads };
 }
 
-/** Load messages for a given thread */
+/** Load messages for a given thread — ordered by server-assigned seq */
 export async function loadThreadMessages(threadId: string): Promise<Message[]> {
   const { data, error } = await supabase
     .from("chat_messages")
     .select("id, role, content, response, voice, receipt, created_at")
     .eq("thread_id", threadId)
+    .order("seq", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
 
   if (error || !data) return [];
@@ -113,13 +114,13 @@ export async function loadThreadMessages(threadId: string): Promise<Message[]> {
   }));
 }
 
-/** Persist a single message to Supabase */
+/** Persist a single message to Supabase.
+ *  seq is assigned automatically by the DB trigger — no client involvement. */
 export async function saveMessage(
   threadId: string,
   userId: string,
-  msg: Pick<Message, "id" | "type" | "content" | "response" | "voice" | "receipt">
+  msg: Pick<Message, "id" | "type" | "content" | "response" | "voice" | "receipt">,
 ): Promise<void> {
-  // Strip non-serialisable fields from voice (audioUrl is a blob URL, won't survive refresh)
   const voicePayload = msg.voice
     ? { waveformData: msg.voice.waveformData, duration: msg.voice.duration }
     : null;
@@ -134,6 +135,42 @@ export async function saveMessage(
     voice: voicePayload,
     receipt: msg.receipt ?? null,
   });
+}
+
+/** Remove undone expense IDs from the collection node in a stored message response.
+ *  Updates Supabase and returns the updated response for immediate UI sync. */
+export async function removeItemsFromMessageResponse(
+  messageId: string,
+  removedIds: string[],
+): Promise<SageResponse | null> {
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("response")
+    .eq("id", messageId)
+    .single();
+
+  if (error || !data?.response) return null;
+
+  // Deep-clone and strip removed IDs from every collection node
+  const response = JSON.parse(JSON.stringify(data.response)) as SageResponse;
+  const stripFromLayout = (node: Record<string, unknown>) => {
+    if (node.kind === "collection" && Array.isArray(node.items)) {
+      node.items = (node.items as { id?: string }[]).filter(
+        (item) => !item.id || !removedIds.includes(item.id)
+      );
+    }
+    if (Array.isArray(node.children)) {
+      (node.children as Record<string, unknown>[]).forEach(stripFromLayout);
+    }
+  };
+  if (response.uiResponse?.layout) stripFromLayout(response.uiResponse.layout as unknown as Record<string, unknown>);
+
+  await supabase
+    .from("chat_messages")
+    .update({ response })
+    .eq("id", messageId);
+
+  return response;
 }
 
 /** Derive a short, clean title from the first user message */

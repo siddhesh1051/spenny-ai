@@ -232,10 +232,11 @@ The root "layout" must always be a "column" node.
 
 ### Data visualisation nodes
 
-**visual** – chart (choose the right type for the data)
-{ "kind": "visual", "variant": "donut"|"bars", "x": "name", "y": "value", "points": [ { "label": "food", "value": 1200, "share": 45 }, ... ] }
-- "donut": pie/donut chart — best for ≤5 categories showing proportions
-- "bars": bar chart — best for >5 categories or when comparing values over time
+**visual** – chart (choose whichever fits the data best)
+{ "kind": "visual", "variant": "pie"|"bars"|"area", "x": "name", "y": "value", "points": [ { "label": "food", "value": 1200, "share": 45 }, ... ] }
+- "pie": pie chart
+- "bars": bar chart
+- "area": area chart with gradient fill — good for trends over time
 - "share" is optional (percentage 0-100)
 
 **table** – data table of expense records (shows a "Show more" button if >10 rows)
@@ -599,6 +600,42 @@ Return ONLY valid JSON: { "layout": { "kind": "column", "children": [...] } }`,
 
       const userAskedForList = /\b(list|show|display|all|transactions?|records?|history)\b/i.test(message);
 
+      // Daily spending grouped by date (for area/trend charts)
+      const byDay: Record<string, number> = {};
+      expenses.forEach((e: { date: string; amount: number }) => {
+        const day = new Date(e.date).toISOString().split("T")[0];
+        byDay[day] = (byDay[day] ?? 0) + e.amount;
+      });
+      const dailyPoints = Object.entries(byDay)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, total]) => ({
+          label: new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          value: Math.round(total),
+        }));
+
+      // Weekly spending grouped by week start (Mon)
+      const byWeek: Record<string, number> = {};
+      expenses.forEach((e: { date: string; amount: number }) => {
+        const d = new Date(e.date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const weekStart = new Date(d.setDate(diff)).toISOString().split("T")[0];
+        byWeek[weekStart] = (byWeek[weekStart] ?? 0) + e.amount;
+      });
+      const weeklyPoints = Object.entries(byWeek)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, total]) => ({
+          label: new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          value: Math.round(total),
+        }));
+
+      // Category points for pie/bar charts
+      const categoryPoints = categoryBreakdown.map((c) => ({
+        label: c.category,
+        value: Math.round(c.total),
+        share: c.percentage,
+      }));
+
       const uiResponse = await groqJSON<{ layout: unknown }>(
         `You are Spenny AI answering a spending query. User asked: "${message}"
 
@@ -613,12 +650,17 @@ ${sampleLines}${expenses.length > 20 ? `\n...and ${expenses.length - 20} more` :
 User explicitly asked for a list/transactions: ${userAskedForList}
 Full transaction rows available (for table node): ${JSON.stringify(expenseRows.slice(0, 50))}
 
+## Chart-ready data points (use exactly these for visual nodes)
+Category points (for pie or bars chart): ${JSON.stringify(categoryPoints)}
+Daily points (for area chart — spending per day): ${JSON.stringify(dailyPoints)}
+Weekly points (for area chart — spending per week): ${JSON.stringify(weeklyPoints)}
+
 ${UI_COMPONENT_CATALOG}
 
 ## Your task
 Design the best UI layout to answer this question. You decide:
 - Which metric summary cards to show (and what values)
-- Whether to show a chart — skip if only 1 category
+- Which chart type fits best: use "area" with dailyPoints or weeklyPoints for trend/time questions, "pie" for category proportion questions, "bars" for category comparisons — skip chart if only 1 data point
 - Whether to show a table (ONLY if user explicitly asked for list/transactions)
 - What insight text to write (always include an "insight" block with 2 sentences: answer + observation) - Should be at last always.
 - How to label sections
@@ -759,7 +801,7 @@ ${UI_COMPONENT_CATALOG}
 Design the best insight dashboard UI for this user. You decide:
 - Which metric cards to highlight (pick the most relevant 2-4 from the data above)
 - Whether and how to label sections with "subheading" blocks
-- Whether to show a chart — recommended for insights
+- Whether to show a chart and which type (pie, bars, or area) — recommended for insights
 - What actionable insights to write in an "insight" block (2-3 sentences with real numbers, encouraging, practical) - Should be at last always.
 - The order and grouping of sections
 
@@ -789,7 +831,7 @@ Return ONLY valid JSON (no markdown):
             { kind: "block", style: "subheading", text: "Spending breakdown (90 days)" },
             catBreakdown.length > 1 ? {
               kind: "visual",
-              variant: "donut",
+              variant: "pie",
               x: "name",
               y: "value",
               points: catBreakdown.map(c => ({ label: c.category, value: c.total, share: c.percentage })),

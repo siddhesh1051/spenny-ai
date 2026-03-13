@@ -62,8 +62,8 @@ export interface UiSummaryNode {
 
 export interface UiVisualNode {
   kind: "visual";
-  /** "donut": pie/donut chart; "bars": bar chart */
-  variant: "donut" | "bars";
+  /** "pie": pie chart; "bars": bar chart; "area": area chart with gradient fill */
+  variant: "pie" | "bars" | "area";
   /** Key name for x-axis (informational, not used by renderer) */
   x?: string;
   /** Key name for y-axis (informational, not used by renderer) */
