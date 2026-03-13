@@ -856,8 +856,10 @@ export default function SagePage({
       {/* ── WELCOME SCREEN ───────────────────────────────────────────── */}
       {!chatMode && (
         <div
-          className="sage-mesh-bg flex flex-col items-center justify-center h-full px-5 text-center"
+          className="sage-mesh-bg flex flex-col items-center justify-start h-full px-5 text-center overflow-y-auto"
           style={{
+            paddingTop: "max(10vh, 3rem)",
+            paddingBottom: "2rem",
             opacity: welcomeLeaving ? 0 : 1,
             transform: welcomeLeaving ? "scale(0.97) translateY(-8px)" : "scale(1) translateY(0)",
             transition: "opacity 0.26s ease, transform 0.26s ease",
@@ -1019,49 +1021,84 @@ export default function SagePage({
               </div>
             </div>
 
-            {/* Recent threads */}
-            {threads.filter((t) => t.title !== "New Chat").slice(0, 3).length > 0 && (
-              <div className="w-full mt-6 sage-fi-6">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
-                    Recent chats
-                  </p>
-                  <button
-                    onClick={() => setShowAllThreads(true)}
-                    className="text-[11px] font-medium text-primary/70 hover:text-primary transition-colors"
-                  >
-                    Show all ({threads.filter((t) => t.title !== "New Chat").length})
-                  </button>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {threads.filter((t) => t.title !== "New Chat").slice(0, 3).map((thread) => (
+            {/* Recent threads — always rendered to prevent layout shift */}
+            {(() => {
+              const recentThreads = threads.filter((t) => t.title !== "New Chat");
+              const visibleThreads = recentThreads.slice(0, 3);
+
+              // While loading: show skeleton rows so layout height is stable
+              if (loadingThreads && threads.length === 0) {
+                return (
+                  <div className="w-full mt-6 sage-fi-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                        Recent chats
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-3 w-full px-3 py-2 rounded-xl"
+                          style={{ opacity: 1 - i * 0.25 }}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-muted animate-pulse shrink-0" />
+                          <div className="flex-1 h-3.5 rounded-full bg-muted animate-pulse" />
+                          <div className="w-10 h-2.5 rounded-full bg-muted animate-pulse shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              // After load: no threads — render nothing (no shift since skeleton held the space)
+              if (recentThreads.length === 0) return null;
+
+              // Has threads: render normally
+              return (
+                <div className="w-full mt-6 sage-fi-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                      Recent chats
+                    </p>
                     <button
-                      key={thread.id}
-                      onClick={() => handleSelectThread(thread.id)}
-                      className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-left hover:bg-muted/60 transition-colors group"
+                      onClick={() => setShowAllThreads(true)}
+                      className="text-[11px] font-medium text-primary/70 hover:text-primary transition-colors"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-muted/80">
-                        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground/60" />
-                      </div>
-                      <span className="flex-1 text-sm text-foreground/80 group-hover:text-foreground truncate">
-                        {thread.title}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground/50 shrink-0">
-                        {recentTimeAgo(thread.updated_at)}
-                      </span>
+                      Show all ({recentThreads.length})
                     </button>
-                  ))}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {visibleThreads.map((thread) => (
+                      <button
+                        key={thread.id}
+                        onClick={() => handleSelectThread(thread.id)}
+                        className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-left hover:bg-muted/60 transition-colors group"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-muted/80">
+                          <MessageSquare className="h-3.5 w-3.5 text-muted-foreground/60" />
+                        </div>
+                        <span className="flex-1 text-sm text-foreground/80 group-hover:text-foreground truncate">
+                          {thread.title}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/50 shrink-0">
+                          {recentTimeAgo(thread.updated_at)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {recentThreads.length > 3 && (
+                    <button
+                      onClick={() => setShowAllThreads(true)}
+                      className="mt-1.5 w-full py-2 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      + {recentThreads.length - 3} more chats
+                    </button>
+                  )}
                 </div>
-                {threads.filter((t) => t.title !== "New Chat").length > 3 && (
-                  <button
-                    onClick={() => setShowAllThreads(true)}
-                    className="mt-1.5 w-full py-2 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                  >
-                    + {threads.filter((t) => t.title !== "New Chat").length - 3} more chats
-                  </button>
-                )}
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
