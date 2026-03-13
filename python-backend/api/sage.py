@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
+    channel: Optional[str] = "web"
 
 
 @router.post("/sage/chat")
@@ -33,9 +35,7 @@ async def sage_chat(
     if not message:
         raise HTTPException(status_code=400, detail="Message is required")
 
-    # Load user profile for Groq key and currency
     profile = get_user_profile(user_id)
-    import os
     groq_key = profile.get("groq_api_key") or os.environ.get("GROQ_API_KEY", "")
     currency = profile.get("currency") or "INR"
 
@@ -56,30 +56,37 @@ async def sage_chat(
             },
         }
 
-    # Use thread_id for LangGraph checkpointer (per-thread memory)
     thread_id = body.thread_id or f"{user_id}-default"
     config = {"configurable": {"thread_id": thread_id}}
+    channel = body.channel or "web"
 
     initial_state = {
         "messages": [HumanMessage(content=message)],
         "user_id": user_id,
         "groq_key": groq_key,
         "currency": currency,
+        "channel": channel,
         "intent": "",
         "result": {},
     }
 
     try:
-        logger.info("sage_chat user=%s thread=%s msg=%.80s", user_id, thread_id, message)
+        logger.info(
+            "sage_chat user=%s thread=%s channel=%s msg=%.80s",
+            user_id,
+            thread_id,
+            channel,
+            message,
+        )
 
-        # Stream node-by-node outputs and capture the last result emitted by a
-        # terminal node (expense/query/insights/conversation). This avoids reading
-        # `result` from the checkpointed final_state which can replay a stale
-        # response from a previous invocation on the same thread.
         result: dict = {}
         async for chunk in sage_graph.astream(initial_state, config=config):
             for node_name, node_output in chunk.items():
-                if isinstance(node_output, dict) and "result" in node_output and node_output["result"]:
+                if (
+                    isinstance(node_output, dict)
+                    and "result" in node_output
+                    and node_output["result"]
+                ):
                     result = node_output["result"]
 
         if not result:
@@ -93,7 +100,11 @@ async def sage_chat(
                 "layout": {
                     "kind": "column",
                     "children": [
-                        {"kind": "block", "style": "body", "text": "I ran into a hiccup — please try again!"}
+                        {
+                            "kind": "block",
+                            "style": "body",
+                            "text": "I ran into a hiccup — please try again!",
+                        }
                     ],
                 }
             },

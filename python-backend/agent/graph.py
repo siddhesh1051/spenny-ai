@@ -1,49 +1,79 @@
 """
 LangGraph StateGraph for Sage — the agentic chat brain.
 
-State carries the full conversation so follow-up questions work naturally.
-The graph:
-  1. Classifies intent
-  2. Routes to the appropriate node
-  3. Returns a structured UI response
+Architecture: every intent triggers a specialised multi-agent pipeline.
 
-Memory: We use LangGraph's InMemorySaver by default (good for single-process
-deployments on Render free tier). When SUPABASE_POSTGRES_URL is set we switch
-to PostgresSaver for persistence across restarts.
+  ┌─────────┐
+  │ START   │
+  └────┬────┘
+       ▼
+  ┌──────────────┐
+  │  classifier  │
+  └──────┬───────┘
+         ▼
+  ┌──────────────────────────────────────────┐
+  │            route_intent                  │
+  ├──────────┬──────────┬──────────┬─────────┤
+  ▼          ▼          ▼          ▼         ▼
+expense   query     insights  conversation receipt
+extract   extract   extract       │        vision
+  ▼          ▼          ▼         │          ▼
+categorize execute   analyze      │       categorize
+  ▼          ▼          ▼         │          ▼
+execute   respond   respond       │       execute
+  ▼                               │          ▼
+respond                           │       respond
+  │          │          │         │          │
+  └──────────┴──────────┴─────────┴──────────┘
+                   ▼
+                  END
+
+Memory: InMemorySaver by default; AsyncPostgresSaver when
+SUPABASE_POSTGRES_URL is set.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Literal
 
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from agent.nodes.classifier import classify_intent
 from agent.nodes.conversation import handle_conversation
-from agent.nodes.expense import handle_expense
-from agent.nodes.insights import handle_insights
-from agent.nodes.query import handle_query
+from agent.state import SageState
+from agent.workflows.expense import (
+    expense_categorize_agent,
+    expense_execute_agent,
+    expense_extract_agent,
+    expense_respond_agent,
+)
+from agent.workflows.insights import (
+    insights_analyze_agent,
+    insights_extract_agent,
+    insights_respond_agent,
+)
+from agent.workflows.query import (
+    query_execute_agent,
+    query_extract_agent,
+    query_respond_agent,
+)
+from agent.workflows.receipt import (
+    receipt_categorize_agent,
+    receipt_execute_agent,
+    receipt_respond_agent,
+    receipt_vision_agent,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# ── State ─────────────────────────────────────────────────────────────────────
+# ── Thin wrapper nodes ────────────────────────────────────────────────────────
+# Each wraps the domain function so it can read/write SageState correctly.
 
-class SageState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
-    user_id: str
-    groq_key: str
-    currency: str
-    intent: str
-    result: dict[str, Any]
-
-
-# ── Node functions ─────────────────────────────────────────────────────────────
 
 async def classifier_node(state: SageState) -> dict:
     last_human = next(
@@ -56,64 +86,24 @@ async def classifier_node(state: SageState) -> dict:
     return {"intent": intent}
 
 
-def route_intent(state: SageState) -> Literal["expense_node", "query_node", "insights_node", "conversation_node"]:
+def route_intent(
+    state: SageState,
+) -> Literal[
+    "expense_extract",
+    "query_extract",
+    "insights_extract",
+    "conversation_node",
+    "receipt_vision",
+]:
     intent = state.get("intent", "conversation")
     routes = {
-        "expense": "expense_node",
-        "query": "query_node",
-        "insights": "insights_node",
+        "expense": "expense_extract",
+        "query": "query_extract",
+        "insights": "insights_extract",
         "conversation": "conversation_node",
+        "receipt": "receipt_vision",
     }
     return routes.get(intent, "conversation_node")
-
-
-async def expense_node(state: SageState) -> dict:
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        None,
-    )
-    message = last_human.content if last_human else ""
-    result = await handle_expense(
-        message, state["user_id"], state["groq_key"], state["currency"]
-    )
-    # Add AI response to message history for context
-    reply_text = f"[expense logged] {result.get('text', 'Expenses logged.')}"
-    return {
-        "result": result,
-        "messages": [AIMessage(content=reply_text)],
-    }
-
-
-async def query_node(state: SageState) -> dict:
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        None,
-    )
-    message = last_human.content if last_human else ""
-    result = await handle_query(
-        message, state["user_id"], state["groq_key"], state["currency"]
-    )
-    reply_text = f"[query response] {result.get('text', 'Here is your spending data.')}"
-    return {
-        "result": result,
-        "messages": [AIMessage(content=reply_text)],
-    }
-
-
-async def insights_node(state: SageState) -> dict:
-    last_human = next(
-        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-        None,
-    )
-    message = last_human.content if last_human else ""
-    result = await handle_insights(
-        message, state["user_id"], state["groq_key"], state["currency"]
-    )
-    reply_text = f"[insights] Here are your spending insights."
-    return {
-        "result": result,
-        "messages": [AIMessage(content=reply_text)],
-    }
 
 
 async def conversation_node(state: SageState) -> dict:
@@ -122,25 +112,34 @@ async def conversation_node(state: SageState) -> dict:
         None,
     )
     message = last_human.content if last_human else ""
+    channel = state.get("channel", "web")
 
-    # Build chat history from state messages for context
     history = []
-    for m in state["messages"][:-1]:  # exclude current message
+    for m in state["messages"][:-1]:
         if isinstance(m, HumanMessage):
             history.append({"role": "user", "content": m.content})
         elif isinstance(m, AIMessage):
             history.append({"role": "assistant", "content": m.content})
 
     result = await handle_conversation(
-        message, state["groq_key"],
+        message,
+        state["groq_key"],
         user_id=state["user_id"],
         chat_history=history if history else None,
+        channel=channel,
     )
 
+    if channel != "web":
+        text = result.get("text", "I'm here to help!")
+        return {
+            "result": result,
+            "text_response": text,
+            "messages": [AIMessage(content=text)],
+        }
+
     reply_ui = result.get("uiResponse", {})
-    # Extract text from first block for the message store
-    reply_text = ""
     children = reply_ui.get("layout", {}).get("children", [])
+    reply_text = ""
     if children and isinstance(children[0], dict):
         reply_text = children[0].get("text", "I'm here to help!")
 
@@ -150,38 +149,105 @@ async def conversation_node(state: SageState) -> dict:
     }
 
 
-# ── Build graph ───────────────────────────────────────────────────────────────
+# ── Build graph ──────────────────────────────────────────────────────────────
+
 
 def _build_checkpointer():
     postgres_url = os.environ.get("SUPABASE_POSTGRES_URL")
     if postgres_url:
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
             return AsyncPostgresSaver.from_conn_string(postgres_url)
         except Exception as exc:
-            logger.warning("PostgresSaver init failed (%s), falling back to InMemorySaver", exc)
+            logger.warning(
+                "PostgresSaver init failed (%s), falling back to InMemorySaver", exc
+            )
     return MemorySaver()
 
 
 def build_sage_graph():
+    """Build the main agentic chat graph."""
     builder = StateGraph(SageState)
 
+    # ── Nodes ─────────────────────────────────────────────────────────────
     builder.add_node("classifier", classifier_node)
-    builder.add_node("expense_node", expense_node)
-    builder.add_node("query_node", query_node)
-    builder.add_node("insights_node", insights_node)
     builder.add_node("conversation_node", conversation_node)
 
+    # Expense pipeline
+    builder.add_node("expense_extract", expense_extract_agent)
+    builder.add_node("expense_categorize", expense_categorize_agent)
+    builder.add_node("expense_execute", expense_execute_agent)
+    builder.add_node("expense_respond", expense_respond_agent)
+
+    # Query pipeline
+    builder.add_node("query_extract", query_extract_agent)
+    builder.add_node("query_execute", query_execute_agent)
+    builder.add_node("query_respond", query_respond_agent)
+
+    # Insights pipeline
+    builder.add_node("insights_extract", insights_extract_agent)
+    builder.add_node("insights_analyze", insights_analyze_agent)
+    builder.add_node("insights_respond", insights_respond_agent)
+
+    # Receipt pipeline
+    builder.add_node("receipt_vision", receipt_vision_agent)
+    builder.add_node("receipt_categorize", receipt_categorize_agent)
+    builder.add_node("receipt_execute", receipt_execute_agent)
+    builder.add_node("receipt_respond", receipt_respond_agent)
+
+    # ── Edges ─────────────────────────────────────────────────────────────
     builder.add_edge(START, "classifier")
     builder.add_conditional_edges("classifier", route_intent)
-    builder.add_edge("expense_node", END)
-    builder.add_edge("query_node", END)
-    builder.add_edge("insights_node", END)
+
+    # Expense chain
+    builder.add_edge("expense_extract", "expense_categorize")
+    builder.add_edge("expense_categorize", "expense_execute")
+    builder.add_edge("expense_execute", "expense_respond")
+    builder.add_edge("expense_respond", END)
+
+    # Query chain
+    builder.add_edge("query_extract", "query_execute")
+    builder.add_edge("query_execute", "query_respond")
+    builder.add_edge("query_respond", END)
+
+    # Insights chain
+    builder.add_edge("insights_extract", "insights_analyze")
+    builder.add_edge("insights_analyze", "insights_respond")
+    builder.add_edge("insights_respond", END)
+
+    # Conversation — single node
     builder.add_edge("conversation_node", END)
+
+    # Receipt chain
+    builder.add_edge("receipt_vision", "receipt_categorize")
+    builder.add_edge("receipt_categorize", "receipt_execute")
+    builder.add_edge("receipt_execute", "receipt_respond")
+    builder.add_edge("receipt_respond", END)
 
     checkpointer = _build_checkpointer()
     return builder.compile(checkpointer=checkpointer)
 
 
-# Module-level singleton — compiled once at startup
+def build_receipt_graph():
+    """Build a standalone receipt-processing graph (no classifier)."""
+    builder = StateGraph(SageState)
+
+    builder.add_node("receipt_vision", receipt_vision_agent)
+    builder.add_node("receipt_categorize", receipt_categorize_agent)
+    builder.add_node("receipt_execute", receipt_execute_agent)
+    builder.add_node("receipt_respond", receipt_respond_agent)
+
+    builder.add_edge(START, "receipt_vision")
+    builder.add_edge("receipt_vision", "receipt_categorize")
+    builder.add_edge("receipt_categorize", "receipt_execute")
+    builder.add_edge("receipt_execute", "receipt_respond")
+    builder.add_edge("receipt_respond", END)
+
+    checkpointer = _build_checkpointer()
+    return builder.compile(checkpointer=checkpointer)
+
+
+# Module-level singletons — compiled once at startup
 sage_graph = build_sage_graph()
+receipt_graph = build_receipt_graph()

@@ -1,25 +1,35 @@
-"""Telegram link and webhook endpoints."""
+"""Telegram link and webhook endpoints.
+
+Incoming messages are processed through the same agentic LangGraph pipeline
+as the web chat, but with channel="telegram" so that respond agents produce
+plain-text replies instead of UI JSON.
+"""
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from utils.http import async_client
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
+from agent.graph import receipt_graph, sage_graph
 from auth.supabase_jwt import get_current_user
 from db.client import get_admin_client
+from utils.http import async_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _send_telegram_message(chat_id: int, text: str, parse_mode: str = "Markdown") -> None:
+async def _send_telegram_message(
+    chat_id: int, text: str, parse_mode: str = "Markdown"
+) -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     async with async_client(timeout=30) as client:
         await client.post(
@@ -28,7 +38,8 @@ async def _send_telegram_message(chat_id: int, text: str, parse_mode: str = "Mar
         )
 
 
-# ── GET ?action=status ─────────────────────────────────────────────────────────
+# ── GET ?action=status ────────────────────────────────────────────────────────
+
 
 @router.get("/telegram/link")
 async def telegram_link_status(
@@ -36,16 +47,26 @@ async def telegram_link_status(
     user: dict = Depends(get_current_user),
 ) -> dict:
     if action != "status":
-        raise HTTPException(status_code=400, detail="Use action=status for GET, or POST to generate link")
+        raise HTTPException(
+            status_code=400,
+            detail="Use action=status for GET, or POST to generate link",
+        )
 
     user_id: str = user["sub"]
     db = get_admin_client()
-    profile = db.table("profiles").select("telegram_chat_id").eq("id", user_id).single().execute()
+    profile = (
+        db.table("profiles")
+        .select("telegram_chat_id")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
     linked = bool(profile.data and profile.data.get("telegram_chat_id"))
     return {"linked": linked}
 
 
-# ── POST — generate link token ──────────────────────────────────────────────
+# ── POST — generate link token ───────────────────────────────────────────────
+
 
 @router.post("/telegram/link")
 async def telegram_link_generate(
@@ -54,18 +75,21 @@ async def telegram_link_generate(
     user_id: str = user["sub"]
     db = get_admin_client()
 
-    # Delete unused tokens
-    db.table("telegram_link_tokens").delete().eq("user_id", user_id).eq("used", False).execute()
+    db.table("telegram_link_tokens").delete().eq("user_id", user_id).eq(
+        "used", False
+    ).execute()
 
     token = secrets.token_hex(16)
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
 
-    db.table("telegram_link_tokens").insert({
-        "user_id": user_id,
-        "token": token,
-        "expires_at": expires_at,
-        "used": False,
-    }).execute()
+    db.table("telegram_link_tokens").insert(
+        {
+            "user_id": user_id,
+            "token": token,
+            "expires_at": expires_at,
+            "used": False,
+        }
+    ).execute()
 
     bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "SpennyAIBot")
     return {
@@ -75,7 +99,8 @@ async def telegram_link_generate(
     }
 
 
-# ── DELETE — unlink Telegram ──────────────────────────────────────────────────
+# ── DELETE — unlink Telegram ─────────────────────────────────────────────────
+
 
 @router.delete("/telegram/link")
 async def telegram_link_delete(
@@ -83,11 +108,17 @@ async def telegram_link_delete(
 ) -> dict:
     user_id: str = user["sub"]
     db = get_admin_client()
-    db.table("profiles").update({"telegram_chat_id": None, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", user_id).execute()
+    db.table("profiles").update(
+        {
+            "telegram_chat_id": None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", user_id).execute()
     return {"success": True}
 
 
-# ── POST /telegram/webhook — Telegram bot messages ────────────────────────────
+# ── POST /telegram/webhook ───────────────────────────────────────────────────
+
 
 @router.post("/telegram/webhook")
 async def telegram_webhook(request: Request) -> dict:
@@ -100,6 +131,7 @@ async def telegram_webhook(request: Request) -> dict:
         chat_id: int = message["chat"]["id"]
         text: str = message.get("text", "").strip()
         voice = message.get("voice")
+        photo_list = message.get("photo")
 
         db = get_admin_client()
 
@@ -110,10 +142,12 @@ async def telegram_webhook(request: Request) -> dict:
             return {"ok": True}
 
         if text == "/start":
-            await _send_telegram_message(chat_id, "👋 Hello! I'm Spenny AI. Link your account from the Spenny web app to get started!")
+            await _send_telegram_message(
+                chat_id,
+                "Hello! I'm Spenny AI. Link your account from the Spenny web app to get started!",
+            )
             return {"ok": True}
 
-        # Look up user by Telegram chat ID
         profile_result = (
             db.table("profiles")
             .select("id, groq_api_key, currency")
@@ -122,7 +156,10 @@ async def telegram_webhook(request: Request) -> dict:
             .execute()
         )
         if not profile_result.data:
-            await _send_telegram_message(chat_id, "Please link your Telegram account from the Spenny web app first!")
+            await _send_telegram_message(
+                chat_id,
+                "Please link your Telegram account from the Spenny web app first!",
+            )
             return {"ok": True}
 
         profile = profile_result.data
@@ -131,14 +168,22 @@ async def telegram_webhook(request: Request) -> dict:
         currency = profile.get("currency") or "INR"
 
         if voice and groq_key:
-            await _handle_telegram_voice(chat_id, voice, user_id, groq_key, currency, db)
+            await _handle_telegram_voice(
+                chat_id, voice, user_id, groq_key, currency
+            )
+        elif photo_list and groq_key:
+            await _handle_telegram_photo(
+                chat_id, photo_list, user_id, groq_key, currency
+            )
         elif text:
-            await _handle_telegram_text(chat_id, text, user_id, groq_key, currency, db)
+            await _handle_telegram_message(
+                chat_id, text, user_id, groq_key, currency
+            )
 
         return {"ok": True}
     except Exception as exc:
         logger.exception("Telegram webhook error: %s", exc)
-        return {"ok": True}  # Always 200 to Telegram
+        return {"ok": True}
 
 
 async def _handle_telegram_link(chat_id: int, token: str, db) -> None:
@@ -151,71 +196,109 @@ async def _handle_telegram_link(chat_id: int, token: str, db) -> None:
         .execute()
     )
     if not token_result.data:
-        await _send_telegram_message(chat_id, "❌ Invalid or expired link token. Please generate a new link from the Spenny web app.")
+        await _send_telegram_message(
+            chat_id,
+            "Invalid or expired link token. Please generate a new link from the Spenny web app.",
+        )
         return
 
     record = token_result.data
-    if datetime.now(timezone.utc) > datetime.fromisoformat(record["expires_at"].replace("Z", "+00:00")):
-        await _send_telegram_message(chat_id, "❌ Link token expired. Please generate a new link from the Spenny web app.")
+    if datetime.now(timezone.utc) > datetime.fromisoformat(
+        record["expires_at"].replace("Z", "+00:00")
+    ):
+        await _send_telegram_message(
+            chat_id,
+            "Link token expired. Please generate a new link from the Spenny web app.",
+        )
         return
 
     user_id = record["user_id"]
-    db.table("profiles").update({"telegram_chat_id": str(chat_id), "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", user_id).execute()
-    db.table("telegram_link_tokens").update({"used": True}).eq("token", token).execute()
-    await _send_telegram_message(chat_id, "✅ Your Telegram account is now linked to Spenny AI!\n\nYou can now log expenses by sending messages like:\n• \"Spent 200 on coffee\"\n• \"Show last month expenses\"\n• \"How much did I spend on food?\"")
+    db.table("profiles").update(
+        {
+            "telegram_chat_id": str(chat_id),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", user_id).execute()
+    db.table("telegram_link_tokens").update({"used": True}).eq(
+        "token", token
+    ).execute()
+    await _send_telegram_message(
+        chat_id,
+        (
+            "Your Telegram account is now linked to Spenny AI!\n\n"
+            "You can now log expenses by sending messages like:\n"
+            '- "Spent 200 on coffee"\n'
+            '- "Show last month expenses"\n'
+            '- "How much did I spend on food?"\n\n'
+            "You can also send receipt photos!"
+        ),
+    )
 
 
-async def _handle_telegram_text(
-    chat_id: int, text: str, user_id: str, groq_key: str, currency: str, db
+async def _handle_telegram_message(
+    chat_id: int,
+    text: str,
+    user_id: str,
+    groq_key: str,
+    currency: str,
 ) -> None:
-    from agent.nodes.classifier import classify_intent
-    from agent.nodes.expense import handle_expense
-    from agent.nodes.query import handle_query
-    from agent.nodes.insights import handle_insights
+    """Process text through the agentic graph with channel=telegram."""
+    thread_id = f"tg-{chat_id}"
+    config = {"configurable": {"thread_id": thread_id}}
 
-    intent = await classify_intent(text, groq_key)
+    initial_state = {
+        "messages": [HumanMessage(content=text)],
+        "user_id": user_id,
+        "groq_key": groq_key,
+        "currency": currency,
+        "channel": "telegram",
+        "intent": "",
+        "result": {},
+    }
 
-    if intent == "expense":
-        result = await handle_expense(text, user_id, groq_key, currency)
-        items_node = None
-        for child in result.get("uiResponse", {}).get("layout", {}).get("children", []):
-            if isinstance(child, dict) and child.get("kind") == "collection":
-                items_node = child
-                break
-        if items_node:
-            count = len(items_node.get("items", []))
-            total = sum(i.get("amount", 0) for i in items_node.get("items", []))
-            reply = f"✅ *{count} expense{'s' if count > 1 else ''} logged!* Total: {currency} {total:,.0f}\n\n"
-            for item in items_node.get("items", []):
-                reply += f"• {item['description']} _{item['category']}_ — {currency} {item['amount']:,.0f}\n"
-        else:
-            reply = result.get("text", "Expenses logged!")
-    elif intent == "query":
-        result = await handle_query(text, user_id, groq_key, currency)
-        children = result.get("uiResponse", {}).get("layout", {}).get("children", [])
-        insight = next((c.get("text", "") for c in children if isinstance(c, dict) and c.get("style") == "insight"), "")
-        reply = insight or "Here's your spending summary!"
-    elif intent == "insights":
-        result = await handle_insights(text, user_id, groq_key, currency)
-        children = result.get("uiResponse", {}).get("layout", {}).get("children", [])
-        insight = next((c.get("text", "") for c in children if isinstance(c, dict) and c.get("style") == "insight"), "")
-        reply = insight or "Here are your spending insights!"
-    else:
-        reply = "👋 Hi! I can help you log expenses, check your spending, or give insights.\n\nTry: \"Spent 200 on coffee\" or \"Show last month's expenses\""
+    try:
+        text_response = ""
+        async for chunk in sage_graph.astream(initial_state, config=config):
+            for _node_name, node_output in chunk.items():
+                if isinstance(node_output, dict):
+                    if node_output.get("text_response"):
+                        text_response = node_output["text_response"]
+                    elif node_output.get("result", {}).get("text"):
+                        text_response = node_output["result"]["text"]
 
-    await _send_telegram_message(chat_id, reply)
+        if not text_response:
+            text_response = (
+                "I can help you log expenses, check your spending, or give insights.\n\n"
+                'Try: "Spent 200 on coffee" or "Show last month\'s expenses"'
+            )
+
+        await _send_telegram_message(chat_id, text_response)
+    except Exception as exc:
+        logger.exception("Telegram message processing failed: %s", exc)
+        await _send_telegram_message(
+            chat_id, "Sorry, something went wrong. Please try again."
+        )
 
 
 async def _handle_telegram_voice(
-    chat_id: int, voice: dict, user_id: str, groq_key: str, currency: str, db
+    chat_id: int,
+    voice: dict,
+    user_id: str,
+    groq_key: str,
+    currency: str,
 ) -> None:
+    """Download Telegram voice note, transcribe, then process as text."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     try:
         file_id = voice["file_id"]
         async with async_client(timeout=30) as client:
-            file_r = await client.get(f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}")
+            file_r = await client.get(
+                f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
+            )
             file_path = file_r.json()["result"]["file_path"]
-            audio_r = await client.get(f"https://api.telegram.org/file/bot{token}/{file_path}")
+            audio_r = await client.get(
+                f"https://api.telegram.org/file/bot{token}/{file_path}"
+            )
             audio_bytes = audio_r.content
 
         async with async_client(timeout=60) as client:
@@ -223,14 +306,88 @@ async def _handle_telegram_voice(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {groq_key}"},
                 files={"file": ("voice.ogg", audio_bytes, "audio/ogg")},
-                data={"model": "whisper-large-v3-turbo", "language": "en", "response_format": "json"},
+                data={
+                    "model": "whisper-large-v3-turbo",
+                    "language": "en",
+                    "response_format": "json",
+                },
             )
             transcript = r.json().get("text", "").strip()
 
         if transcript:
-            await _handle_telegram_text(chat_id, transcript, user_id, groq_key, currency, db)
+            await _handle_telegram_message(
+                chat_id, transcript, user_id, groq_key, currency
+            )
         else:
-            await _send_telegram_message(chat_id, "Sorry, I couldn't understand the audio. Please try again.")
+            await _send_telegram_message(
+                chat_id,
+                "Sorry, I couldn't understand the audio. Please try again.",
+            )
     except Exception as exc:
         logger.exception("Telegram voice processing failed: %s", exc)
-        await _send_telegram_message(chat_id, "Sorry, I couldn't process your voice message.")
+        await _send_telegram_message(
+            chat_id, "Sorry, I couldn't process your voice message."
+        )
+
+
+async def _handle_telegram_photo(
+    chat_id: int,
+    photo_list: list,
+    user_id: str,
+    groq_key: str,
+    currency: str,
+) -> None:
+    """Download Telegram photo, run through the receipt agentic pipeline."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    try:
+        # Telegram sends multiple sizes — pick the largest
+        photo = photo_list[-1] if photo_list else {}
+        file_id = photo.get("file_id", "")
+        if not file_id:
+            return
+
+        async with async_client(timeout=30) as client:
+            file_r = await client.get(
+                f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
+            )
+            file_path = file_r.json()["result"]["file_path"]
+            img_r = await client.get(
+                f"https://api.telegram.org/file/bot{token}/{file_path}"
+            )
+            image_bytes = img_r.content
+
+        b64 = base64.b64encode(image_bytes).decode()
+        data_url = f"data:image/jpeg;base64,{b64}"
+
+        thread_id = f"tg-receipt-{chat_id}"
+        config = {"configurable": {"thread_id": thread_id}}
+
+        initial_state = {
+            "messages": [HumanMessage(content="[receipt photo]")],
+            "user_id": user_id,
+            "groq_key": groq_key,
+            "currency": currency,
+            "channel": "telegram",
+            "intent": "receipt",
+            "receipt_image_url": data_url,
+            "result": {},
+        }
+
+        text_response = ""
+        async for chunk in receipt_graph.astream(initial_state, config=config):
+            for _node_name, node_output in chunk.items():
+                if isinstance(node_output, dict):
+                    if node_output.get("text_response"):
+                        text_response = node_output["text_response"]
+                    elif node_output.get("result", {}).get("text"):
+                        text_response = node_output["result"]["text"]
+
+        if not text_response:
+            text_response = "I couldn't read the receipt. Please try a clearer photo."
+
+        await _send_telegram_message(chat_id, text_response)
+    except Exception as exc:
+        logger.exception("Telegram photo processing failed: %s", exc)
+        await _send_telegram_message(
+            chat_id, "Sorry, I couldn't process the image. Please try again."
+        )
