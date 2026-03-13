@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { apiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -81,21 +82,12 @@ export default function WhatsAppIntegrationPage() {
         return;
       }
 
-      // Call the send-whatsapp-otp Edge Function
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            phone: fullPhone,
-            userId: user.id,
-          }),
-        }
-      );
+      // Call the send-whatsapp-otp endpoint
+      const response = await fetch(apiUrl("/whatsapp/otp/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: fullPhone, userId: user.id }),
+      });
 
       const data = await response.json();
 
@@ -133,22 +125,12 @@ export default function WhatsAppIntegrationPage() {
         return;
       }
 
-      // Call the verify-whatsapp-otp Edge Function
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-whatsapp-otp`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            phone: fullPhone,
-            otp: otp,
-            userId: user.id,
-          }),
-        }
-      );
+      // Call the verify-whatsapp-otp endpoint
+      const response = await fetch(apiUrl("/whatsapp/otp/verify"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: fullPhone, otp, userId: user.id }),
+      });
 
       const data = await response.json();
 

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCurrency } from "@/context/CurrencyContext";
 import { supabase } from "@/lib/supabase";
+import { apiUrl, apiHeaders } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ import {
   deriveTitle,
   removeItemsFromMessageResponse,
 } from "@/hooks/useChatThreads";
+import { updateThreadTitle } from "@/lib/backend";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -194,19 +196,13 @@ export default function SagePage({
     activeThreadIdRef.current = threadId;
     setActiveThreadId(threadId);
 
-    // Fetch messages and thread title in parallel
-    const [msgs, threadRow] = await Promise.all([
-      loadThreadMessages(threadId),
-      supabase
-        .from("chat_threads")
-        .select("title")
-        .eq("id", threadId)
-        .single()
-        .then(({ data }) => data),
-    ]);
+    // Fetch messages (title comes from the threads list already loaded)
+    const msgs = await loadThreadMessages(threadId);
 
     setLoadingMessages(false);
-    setActiveThreadTitle((threadRow as { title: string } | null)?.title ?? "Chat");
+    // Use title from threads list if available, otherwise keep current
+    const found = threads.find((t) => t.id === threadId);
+    if (found) setActiveThreadTitle(found.title);
     setMessages(msgs);
     // All loaded messages are historical — make them immediately visible.
     setLastMsgVisible(true);
@@ -289,7 +285,7 @@ export default function SagePage({
       const title = deriveTitle(firstUserText || aiText);
       // Update UI immediately so the user sees the title right after the reply
       setActiveThreadTitle(title);
-      await supabase.from("chat_threads").update({ title }).eq("id", threadId);
+      await updateThreadTitle(threadId, title);
       refreshThreads();
     },
     [refreshThreads]
@@ -409,14 +405,12 @@ export default function SagePage({
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error("Not authenticated");
 
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-
         const formData = new FormData();
         formData.append("audio", blob, "voice.webm");
 
-        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
+        const transcribeRes = await fetch(apiUrl("/audio/transcribe"), {
           method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
+          headers: apiHeaders(session.access_token),
           body: formData,
         });
 
@@ -434,13 +428,10 @@ export default function SagePage({
 
         const threadId = await ensureThread();
 
-        const sageRes = await fetch(`${SUPABASE_URL}/functions/v1/sage-chat`, {
+        const sageRes = await fetch(apiUrl("/sage/chat"), {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message: transcript }),
+          headers: apiHeaders(session.access_token, { "Content-Type": "application/json" }),
+          body: JSON.stringify({ message: transcript, thread_id: threadId }),
         });
 
         stopThinking();
@@ -650,13 +641,12 @@ export default function SagePage({
 
         const threadId = await ensureThread();
 
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
         const formData = new FormData();
         formData.append("image", file);
 
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-receipt`, {
+        const res = await fetch(apiUrl("/receipt/extract"), {
           method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
+          headers: apiHeaders(session.access_token),
           body: formData,
         });
 
@@ -766,14 +756,10 @@ export default function SagePage({
         // would remount this component and lose all in-flight state.
         const threadId = await ensureThread();
 
-        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/sage-chat`, {
+        const res = await fetch(apiUrl("/sage/chat"), {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message: trimmed }),
+          headers: apiHeaders(session.access_token, { "Content-Type": "application/json" }),
+          body: JSON.stringify({ message: trimmed, thread_id: threadId }),
         });
 
         stopThinking();
@@ -1205,7 +1191,7 @@ export default function SagePage({
                                 visible={visible}
                                 onUndoLoggedExpenses={deleteExpense ? async (ids: string[]) => {
                                   for (const id of ids) await deleteExpense(id);
-                                  const updated = await removeItemsFromMessageResponse(msg.id, ids);
+                                  const updated = await removeItemsFromMessageResponse(msg.id, ids, activeThreadId ?? undefined);
                                   if (updated) {
                                     setMessages((prev) =>
                                       prev.map((m) =>
@@ -1662,6 +1648,23 @@ export default function SagePage({
         <AllThreadsModal
           threads={threads.filter((t) => t.title !== "New Chat")}
           onSelectThread={handleSelectThread}
+          onDeleteThread={async (id) => {
+            await deleteThread(id);
+            // If deleting the active thread, reset to welcome screen
+            if (id === activeThreadIdRef.current) {
+              activeThreadIdRef.current = null;
+              threadCreationRef.current = null;
+              setMessages([]);
+              setInput("");
+              setIsThinking(false);
+              setLastMsgVisible(false);
+              setChatMode(false);
+              setActiveThreadId(null);
+              setActiveThreadTitle("New Chat");
+              titleRefinedRef.current = false;
+              navigate("/", { replace: true });
+            }
+          }}
           onClose={() => setShowAllThreads(false)}
         />
       )}

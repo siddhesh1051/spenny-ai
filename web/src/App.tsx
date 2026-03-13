@@ -1,25 +1,13 @@
-import type { Session, User } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
-
-/** Ensure a profile row exists for the user (e.g. after Google sign-in). Creates one if missing. */
-async function ensureProfile(user: User): Promise<void> {
-  const { data: existing } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (existing) return;
-  const fullName =
-    user.user_metadata?.full_name ??
-    user.user_metadata?.name ??
-    (user.email ? user.email.split("@")[0] : "");
-  await supabase.from("profiles").upsert({
-    id: user.id,
-    full_name: fullName,
-    updated_at: new Date().toISOString(),
-  });
-}
+import {
+  ensureProfile,
+  getProfile,
+  fetchExpenses as fetchExpensesFromDB,
+  deleteExpense as deleteExpenseInDB,
+  updateExpense as updateExpenseInDB,
+} from "./lib/backend";
 import AuthPage from "./pages/AuthPage";
 import { Routes, Route, Navigate, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
@@ -211,37 +199,25 @@ function App() {
 
   useEffect(() => {
     const getSessionAndProfile = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       if (session) {
         await ensureProfile(session.user);
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("groq_api_key")
-          .eq("id", session.user.id)
-          .single();
+        const profile = await getProfile();
         setUserGroqKey(profile?.groq_api_key || null);
       }
     };
     getSessionAndProfile();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
-        const initProfileAndGetGroq = async () => {
+        const init = async () => {
           await ensureProfile(session.user);
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("groq_api_key")
-            .eq("id", session.user.id)
-            .single();
+          const profile = await getProfile();
           setUserGroqKey(profile?.groq_api_key || null);
         };
-        initProfileAndGetGroq();
+        init();
       } else {
         navigate("/");
         setUserGroqKey(null);
@@ -359,11 +335,7 @@ function App() {
     if (!session) return;
     try {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from("expenses")
-        .select("*")
-        .order("date", { ascending: false });
-      if (error) throw error;
+      const data = await fetchExpensesFromDB();
       setExpenses(data || []);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : String(error));
@@ -381,23 +353,21 @@ function App() {
   const addExpenses = async (newExpenses: Omit<Expense, "id">[]) => {
     if (!session) return;
     try {
-      console.log("💾 Adding expenses to database:", newExpenses);
-
+      // For the legacy home page path (PDF/image upload), still use Supabase directly
+      // since these go through a different flow outside the Python agent
       const expensesWithDateAndUser = newExpenses.map((e) => ({
         ...e,
-        date: e.date || new Date().toISOString(), // Use provided date or fallback
+        date: e.date || new Date().toISOString(),
         user_id: session.user.id,
       }));
-      const { data, error } = await supabase
+      const { data, error } = await (await import("./lib/supabase")).supabase
         .from("expenses")
         .insert(expensesWithDateAndUser)
         .select();
       if (error) throw error;
       setExpenses((prevExpenses) => [...data, ...prevExpenses]);
       toast.success(`Added ${data.length} expense(s) from document!`);
-      console.log("✅ Expenses added successfully:", data);
     } catch (error: unknown) {
-      console.error("❌ Failed to add expenses:", error);
       setError(error instanceof Error ? error.message : String(error));
       toast.error("Failed to save expenses");
     }
@@ -405,8 +375,7 @@ function App() {
 
   const deleteExpense = async (id: string) => {
     try {
-      const { error } = await supabase.from("expenses").delete().eq("id", id);
-      if (error) throw error;
+      await deleteExpenseInDB(id);
       setExpenses(expenses.filter((e) => e.id !== id));
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : String(error));
@@ -415,13 +384,7 @@ function App() {
 
   const updateExpense = async (id: string, updatedFields: Partial<Expense>) => {
     try {
-      const { data, error } = await supabase
-        .from("expenses")
-        .update(updatedFields)
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await updateExpenseInDB(id, updatedFields);
       setExpenses(expenses.map((e) => (e.id === id ? data : e)));
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : String(error));

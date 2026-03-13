@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { apiUrl, apiHeaders } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -359,14 +360,18 @@ export default function GmailSyncPage() {
 
       // Pass since_date for first-time syncs; subsequent syncs use last_synced_at from server
       const isFirstSync = !syncState?.last_synced_at;
-      const { data, error } = await supabase.functions.invoke("sync-gmail-expenses", {
-        body: {
+      const { data: { session: gmailSession } } = await supabase.auth.getSession();
+      const accessToken = gmailSession?.access_token ?? "";
+      const gmailRes = await fetch(apiUrl("/gmail/sync"), {
+        method: "POST",
+        headers: apiHeaders(accessToken, { "Content-Type": "application/json" }),
+        body: JSON.stringify({
           gmail_access_token: providerToken,
           ...(isFirstSync ? { since_date: sinceDate } : {}),
-        },
+        }),
       });
-
-      if (error) throw new Error(error.message);
+      if (!gmailRes.ok) throw new Error(`Gmail sync failed: HTTP ${gmailRes.status}`);
+      const data = await gmailRes.json();
       if (data?.error) throw new Error(data.error);
 
       const result = data as SyncResult;

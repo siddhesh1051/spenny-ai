@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import {
+  fetchApiKeys as fetchApiKeysFromDB,
+  createApiKey as createApiKeyInDB,
+  revokeApiKey as revokeApiKeyInDB,
+} from "@/lib/backend";
 import { Copy, Eye, EyeOff, Trash2, Plus, Key, Info } from "lucide-react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
@@ -40,12 +44,8 @@ const ApiKeysManagement = () => {
 
   const fetchApiKeys = async () => {
     try {
-      const { data, error } = await supabase
-        .from("api_keys")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setApiKeys(data || []);
+      const data = await fetchApiKeysFromDB();
+      setApiKeys(data);
     } catch (error) {
       console.error("Error fetching API keys:", error);
     } finally {
@@ -60,12 +60,9 @@ const ApiKeysManagement = () => {
     }
     setCreating(true);
     try {
-      const { data, error } = await supabase.rpc("create_api_key", {
-        key_name_param: newKeyName.trim(),
-      });
-      if (error) throw error;
-      if (data && data.length > 0) {
-        setGeneratedKey(data[0]);
+      const key = await createApiKeyInDB(newKeyName.trim());
+      if (key) {
+        setGeneratedKey(key);
         setNewKeyName("");
         setShowCreateForm(false);
         fetchApiKeys();
@@ -87,10 +84,7 @@ const ApiKeysManagement = () => {
   const confirmDeleteApiKey = async () => {
     if (!revokeKeyId) return;
     try {
-      const { error } = await supabase.rpc("revoke_api_key", {
-        key_id_param: revokeKeyId,
-      });
-      if (error) throw error;
+      await revokeApiKeyInDB(revokeKeyId);
       fetchApiKeys();
       toast.success("API key revoked successfully");
     } catch (error) {

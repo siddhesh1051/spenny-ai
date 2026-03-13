@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
-import { supabase } from "@/lib/supabase";
+import { getCurrency, setCurrencyInDB } from "@/lib/backend";
 
 export interface CurrencyInfo {
   code: string;
@@ -172,20 +172,16 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     [currency, currencySymbol]
   );
 
-  // On mount, load currency from Supabase profile if user is logged in
+  // On mount, load currency from profile (Python or Supabase depending on flag)
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("currency")
-        .eq("id", user.id)
-        .single();
-      if (data?.currency) {
-        setCurrencyState(data.currency);
-        localStorage.setItem(STORAGE_KEY, data.currency);
-      }
+      try {
+        const code = await getCurrency();
+        if (code) {
+          setCurrencyState(code);
+          localStorage.setItem(STORAGE_KEY, code);
+        }
+      } catch {}
     };
     load();
   }, []);
@@ -193,15 +189,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const setCurrency = useCallback(async (code: string) => {
     setCurrencyState(code);
     localStorage.setItem(STORAGE_KEY, code);
-
-    // Persist to Supabase profile
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from("profiles")
-        .update({ currency: code, updated_at: new Date().toISOString() })
-        .eq("id", user.id);
-    }
+    try { await setCurrencyInDB(code); } catch {}
   }, []);
 
   return (

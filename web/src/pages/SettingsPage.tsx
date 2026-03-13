@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
+import { getProfile, updateProfile as updateProfileInDB } from "@/lib/backend";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,12 +46,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       if (user) {
-        getProfile(user);
+        loadProfile();
       } else {
         setLoading(false);
       }
@@ -58,22 +57,12 @@ export default function SettingsPage() {
     fetchUser();
   }, []);
 
-  const getProfile = async (user: User) => {
+  const loadProfile = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select(`full_name, groq_api_key`)
-        .eq("id", user.id)
-        .single();
-
-      if (error && error.code !== "PGRST116") {
-        throw error;
-      }
-      if (data) {
-        setFullName(data.full_name || "");
-        setGroqApiKey(data.groq_api_key || "");
-      }
+      const data = await getProfile();
+      setFullName(data.full_name || "");
+      setGroqApiKey(data.groq_api_key || "");
     } catch (error: any) {
       console.error("Error fetching profile:", error.message);
     } finally {
@@ -85,22 +74,9 @@ export default function SettingsPage() {
     if (!user) return;
     setIsSubmitting(true);
     try {
-      const updates = {
-        id: user.id,
-        full_name: fullName,
-        groq_api_key: groqApiKey,
-        updated_at: new Date(),
-      };
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert(updates);
-      if (profileError) throw profileError;
-
-      const { error: userError } = await supabase.auth.updateUser({
-        data: { full_name: fullName },
-      });
-      if (userError) throw userError;
-
+      await updateProfileInDB({ full_name: fullName, groq_api_key: groqApiKey });
+      // Also update Supabase Auth user metadata for display name
+      await supabase.auth.updateUser({ data: { full_name: fullName } });
       toast.success("Profile updated successfully!");
     } catch (error: any) {
       toast.error(`Error updating profile: ${error.message}`);
