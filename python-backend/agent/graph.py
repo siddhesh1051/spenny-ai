@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import os
+import textwrap
 from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -70,6 +71,23 @@ from agent.workflows.receipt import (
 
 logger = logging.getLogger(__name__)
 
+_SEP = "─" * 60
+
+
+def _log_node(name: str, emoji: str, output: dict) -> None:
+    """Pretty-print a node name and its state output to the console."""
+    lines = [f"\n{_SEP}", f"  {emoji}  NODE: {name}", _SEP]
+    for key, val in output.items():
+        if key == "messages":
+            for m in (val if isinstance(val, list) else [val]):
+                content = getattr(m, "content", str(m))
+                lines.append(f"  messages  → {textwrap.shorten(content, 120)}")
+        else:
+            short = textwrap.shorten(str(val), 200)
+            lines.append(f"  {key:<22} → {short}")
+    lines.append(_SEP)
+    logger.info("\n".join(lines))
+
 
 # ── Thin wrapper nodes ────────────────────────────────────────────────────────
 # Each wraps the domain function so it can read/write SageState correctly.
@@ -82,8 +100,9 @@ async def classifier_node(state: SageState) -> dict:
     )
     message = last_human.content if last_human else ""
     intent = await classify_intent(message, state["groq_key"])
-    logger.info("Intent classified: %s for message: %.60s", intent, message)
-    return {"intent": intent}
+    out = {"intent": intent}
+    _log_node("classifier", "🔍", {"user_message": message, **out})
+    return out
 
 
 def route_intent(
@@ -131,11 +150,13 @@ async def conversation_node(state: SageState) -> dict:
 
     if channel != "web":
         text = result.get("text", "I'm here to help!")
-        return {
+        out = {
             "result": result,
             "text_response": text,
             "messages": [AIMessage(content=text)],
         }
+        _log_node("conversation", "💬", {"channel": channel, "reply": text})
+        return out
 
     reply_ui = result.get("uiResponse", {})
     children = reply_ui.get("layout", {}).get("children", [])
@@ -143,10 +164,12 @@ async def conversation_node(state: SageState) -> dict:
     if children and isinstance(children[0], dict):
         reply_text = children[0].get("text", "I'm here to help!")
 
-    return {
+    out = {
         "result": result,
         "messages": [AIMessage(content=reply_text or "I'm here to help!")],
     }
+    _log_node("conversation", "💬", {"channel": channel, "reply": reply_text or "I'm here to help!"})
+    return out
 
 
 # ── Build graph ──────────────────────────────────────────────────────────────
@@ -175,26 +198,99 @@ def build_sage_graph():
     builder.add_node("conversation_node", conversation_node)
 
     # Expense pipeline
-    builder.add_node("expense_extract", expense_extract_agent)
-    builder.add_node("expense_categorize", expense_categorize_agent)
-    builder.add_node("expense_execute", expense_execute_agent)
-    builder.add_node("expense_respond", expense_respond_agent)
+    async def _expense_extract(state):
+        out = await expense_extract_agent(state)
+        _log_node("expense_extract", "📝", out)
+        return out
+
+    async def _expense_categorize(state):
+        out = await expense_categorize_agent(state)
+        _log_node("expense_categorize", "🏷️ ", out)
+        return out
+
+    async def _expense_execute(state):
+        out = await expense_execute_agent(state)
+        _log_node("expense_execute", "💾", {k: v for k, v in out.items() if k != "result"})
+        return out
+
+    async def _expense_respond(state):
+        out = await expense_respond_agent(state)
+        _log_node("expense_respond", "✅", {"messages": out.get("messages", [])})
+        return out
+
+    builder.add_node("expense_extract", _expense_extract)
+    builder.add_node("expense_categorize", _expense_categorize)
+    builder.add_node("expense_execute", _expense_execute)
+    builder.add_node("expense_respond", _expense_respond)
 
     # Query pipeline
-    builder.add_node("query_extract", query_extract_agent)
-    builder.add_node("query_execute", query_execute_agent)
-    builder.add_node("query_respond", query_respond_agent)
+    async def _query_extract(state):
+        out = await query_extract_agent(state)
+        _log_node("query_extract", "🔎", out)
+        return out
+
+    async def _query_execute(state):
+        out = await query_execute_agent(state)
+        _log_node("query_execute", "📊", {
+            "query_results_count": len(out.get("query_results", [])),
+            "query_analytics": out.get("query_analytics", {}),
+        })
+        return out
+
+    async def _query_respond(state):
+        out = await query_respond_agent(state)
+        _log_node("query_respond", "✅", {"messages": out.get("messages", [])})
+        return out
+
+    builder.add_node("query_extract", _query_extract)
+    builder.add_node("query_execute", _query_execute)
+    builder.add_node("query_respond", _query_respond)
 
     # Insights pipeline
-    builder.add_node("insights_extract", insights_extract_agent)
-    builder.add_node("insights_analyze", insights_analyze_agent)
-    builder.add_node("insights_respond", insights_respond_agent)
+    async def _insights_extract(state):
+        out = await insights_extract_agent(state)
+        _log_node("insights_extract", "🔎", out)
+        return out
+
+    async def _insights_analyze(state):
+        out = await insights_analyze_agent(state)
+        _log_node("insights_analyze", "🧠", {"insights_data_keys": list(out.get("insights_data", {}).keys())})
+        return out
+
+    async def _insights_respond(state):
+        out = await insights_respond_agent(state)
+        _log_node("insights_respond", "✅", {"messages": out.get("messages", [])})
+        return out
+
+    builder.add_node("insights_extract", _insights_extract)
+    builder.add_node("insights_analyze", _insights_analyze)
+    builder.add_node("insights_respond", _insights_respond)
 
     # Receipt pipeline
-    builder.add_node("receipt_vision", receipt_vision_agent)
-    builder.add_node("receipt_categorize", receipt_categorize_agent)
-    builder.add_node("receipt_execute", receipt_execute_agent)
-    builder.add_node("receipt_respond", receipt_respond_agent)
+    async def _receipt_vision(state):
+        out = await receipt_vision_agent(state)
+        _log_node("receipt_vision", "📷", {"receipt_raw_items": out.get("receipt_raw_items", [])})
+        return out
+
+    async def _receipt_categorize(state):
+        out = await receipt_categorize_agent(state)
+        _log_node("receipt_categorize", "🏷️ ", out)
+        return out
+
+    async def _receipt_execute(state):
+        out = await receipt_execute_agent(state)
+        _log_node("receipt_execute", "💾", {k: v for k, v in out.items() if k != "result"})
+        return out
+
+    async def _receipt_respond(state):
+        out = await receipt_respond_agent(state)
+        _log_node("receipt_respond", "✅", {"messages": out.get("messages", [])})
+        return out
+
+    builder.add_node("receipt_vision", _receipt_vision)
+    builder.add_node("receipt_categorize", _receipt_categorize)
+    builder.add_node("receipt_execute", _receipt_execute)
+    builder.add_node("receipt_respond", _receipt_respond)
 
     # ── Edges ─────────────────────────────────────────────────────────────
     builder.add_edge(START, "classifier")
@@ -237,7 +333,6 @@ def build_receipt_graph():
     builder.add_node("receipt_categorize", receipt_categorize_agent)
     builder.add_node("receipt_execute", receipt_execute_agent)
     builder.add_node("receipt_respond", receipt_respond_agent)
-
     builder.add_edge(START, "receipt_vision")
     builder.add_edge("receipt_vision", "receipt_categorize")
     builder.add_edge("receipt_categorize", "receipt_execute")
