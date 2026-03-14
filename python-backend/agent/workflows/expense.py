@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -23,7 +24,7 @@ from agent.constants import (
     VALID_CATEGORIES,
 )
 from agent.tools.db_tools import insert_expenses
-from agent.tools.groq_tools import FAST_MODEL, groq_json
+from agent.tools.groq_tools import DEFAULT_MODEL, FAST_MODEL, GroqRateLimitError, groq_json
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +42,52 @@ def _last_human_text(state: dict) -> str:
 
 # ── Agent 1: Extraction ──────────────────────────────────────────────────────
 
+_EXTRACT_PATTERNS = [
+    # "spent 400 on rent", "paid 200 for uber", "added 300 to groceries"
+    re.compile(r"(?:spent|paid|add(?:ed)?|logged?)\s+(\d+(?:\.\d+)?)\s+(?:on|for|to)\s+(.+)", re.I),
+    # "400 on rent", "200 for coffee"
+    re.compile(r"(\d+(?:\.\d+)?)\s+(?:on|for)\s+(.+)", re.I),
+    # "rent 400", "coffee 200"
+    re.compile(r"([a-z][a-z\s]{1,40})\s+(\d+(?:\.\d+)?)", re.I),
+    # "400 rent"
+    re.compile(r"(\d+(?:\.\d+)?)\s+([a-z][a-z\s]{1,40})", re.I),
+]
+
+
+def _regex_extract(message: str) -> list[dict]:
+    """Best-effort regex fallback when the LLM returns nothing."""
+    for pattern in _EXTRACT_PATTERNS:
+        match = pattern.search(message.strip())
+        if not match:
+            continue
+        g1, g2 = match.group(1).strip(), match.group(2).strip()
+        # Determine which group is amount and which is description
+        try:
+            amount = float(g1)
+            description = g2.capitalize()
+        except ValueError:
+            try:
+                amount = float(g2)
+                description = g1.capitalize()
+            except ValueError:
+                continue
+        if amount > 0 and description:
+            return [{"amount": amount, "description": description, "date": None}]
+    return []
+
+
 async def expense_extract_agent(state: dict) -> dict:
     """Pull every expense mention from the user message.
 
     Output: list of ``{amount, description, date?}`` — no categories yet.
     Uses the fast 8B model to keep latency and rate-limit usage low.
+    Falls back to regex parsing if the LLM call fails.
     """
     message = _last_human_text(state)
 
-    parsed = await groq_json(
-        f"""Extract ALL expenses from this message: "{message}"
+    try:
+        parsed = await groq_json(
+            f"""Extract ALL expenses from this message: "{message}"
 
 Return ONLY a JSON array (no markdown):
 [{{"amount": number, "description": string, "date": "YYYY-MM-DD or null"}}]
@@ -60,11 +97,16 @@ Rules:
 - description: clean short name (max 50 chars), capitalize first letter
 - date: extract if mentioned, otherwise null
 - Extract EVERY expense mentioned""",
-        state["groq_key"],
-        temperature=0.1,
-        max_tokens=400,
-        model=FAST_MODEL,
-    )
+            state["groq_key"],
+            temperature=0.1,
+            max_tokens=400,
+            model=FAST_MODEL,
+        )
+    except GroqRateLimitError:
+        return {
+            "extracted_expenses": [],
+            "result": {"intent": "conversation", "text": "Too many requests. Please try again in a few seconds."},
+        }
 
     valid = [
         e
@@ -74,6 +116,10 @@ Rules:
         and isinstance(e.get("description"), str)
         and e["description"].strip()
     ]
+
+    # Regex fallback for simple patterns like "spent 400 on rent" or "400 rent"
+    if not valid:
+        valid = _regex_extract(message)
 
     logger.info("expense_extract: found %d items from '%.60s'", len(valid), message)
     return {"extracted_expenses": valid}
@@ -95,8 +141,9 @@ async def expense_categorize_agent(state: dict) -> dict:
         f"- \"{e['description']}\": {e['amount']}" for e in expenses
     )
 
-    result = await groq_json(
-        f"""Assign the BEST category to each expense.
+    try:
+        result = await groq_json(
+            f"""Assign the BEST category to each expense.
 
 {EXPENSE_CATEGORY_GUIDE}
 
@@ -110,14 +157,20 @@ Rules:
 - Use ONLY categories from the list above
 - Apply the PRIORITY OVERRIDE RULES strictly
 - Each expense must have exactly one category""",
-        state["groq_key"],
-        temperature=0.0,
-        max_tokens=500,
-        model=FAST_MODEL,
-    )
+            state["groq_key"],
+            temperature=0.0,
+            max_tokens=500,
+            model=DEFAULT_MODEL,
+        )
+    except GroqRateLimitError:
+        error_text = "Too many requests. Please try again in a few seconds."
+        return {
+            "categorized_expenses": [],
+            "result": {"intent": "conversation", "text": error_text},
+        }
 
     if not result:
-        result = [{**e, "category": "Other"} for e in expenses]
+        result = [{**e, "category": _keyword_category(e["description"])} for e in expenses]
 
     # Merge dates from the extraction step when the categoriser drops them
     date_map = {(e["description"], e["amount"]): e.get("date") for e in expenses}
@@ -147,6 +200,9 @@ async def expense_execute_agent(state: dict) -> dict:
     expenses = state.get("categorized_expenses", [])
 
     if not expenses:
+        existing_result = state.get("result")
+        if existing_result:
+            return {"inserted_expenses": [], "result": existing_result}
         return {
             "inserted_expenses": [],
             "result": {

@@ -47,6 +47,10 @@ async def groq_chat(
         return data["choices"][0]["message"]["content"] or ""
 
 
+class GroqRateLimitError(Exception):
+    """Raised when Groq returns a 429 Too Many Requests."""
+
+
 async def groq_json(
     prompt: str,
     key: str,
@@ -61,6 +65,8 @@ async def groq_json(
         cleaned = re.sub(r"```", "", cleaned).strip()
         return json.loads(cleaned)
     except Exception as exc:
+        if "429" in str(exc) or getattr(getattr(exc, "response", None), "status_code", None) == 429:
+            raise GroqRateLimitError("Groq rate limit hit") from exc
         logger.debug("groq_json failed: %s", exc)
         return None
 

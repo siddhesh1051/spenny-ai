@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from agent.graph import sage_graph
 from agent.tools.db_tools import get_user_profile
+from agent.tools.groq_tools import GroqRateLimitError
 from auth.supabase_jwt import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ async def sage_chat(
         if not result:
             raise ValueError("Empty result from graph")
         return result
+    except GroqRateLimitError:
+        return {"intent": "conversation", "text": "Too many requests. Please try again in a few seconds."}
     except Exception as exc:
         logger.exception("sage_chat error: %s", exc)
         return {

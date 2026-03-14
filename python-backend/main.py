@@ -2,13 +2,15 @@
 
 import logging
 import os
-import ssl
+import sys
 
 # Fix macOS Python SSL certificate verification before any network imports
-import certifi
-ssl._create_default_https_context = ssl.create_default_context
-os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+if sys.platform == "darwin":
+    import ssl
+    import certifi
+    ssl._create_default_https_context = ssl.create_default_context
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 from dotenv import load_dotenv
 
