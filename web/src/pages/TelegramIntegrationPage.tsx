@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { apiUrl, apiHeaders } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -63,15 +64,9 @@ export default function TelegramIntegrationPage() {
     if (!token) return false;
 
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-link?action=status`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-        }
-      );
+      const res = await fetch(apiUrl("/telegram/link", "action=status"), {
+        headers: apiHeaders(token),
+      });
       const data = await res.json();
       if (data.linked) {
         setStep("linked");
@@ -143,17 +138,10 @@ export default function TelegramIntegrationPage() {
       const token = session.data.session?.access_token;
       if (!token) throw new Error("Not authenticated");
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-link`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const res = await fetch(apiUrl("/telegram/link"), {
+        method: "POST",
+        headers: apiHeaders(token, { "Content-Type": "application/json" }),
+      });
 
       const data = await res.json();
 
@@ -191,16 +179,10 @@ export default function TelegramIntegrationPage() {
       const token = session.data.session?.access_token;
       if (!token) throw new Error("Not authenticated");
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-link`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-        }
-      );
+      const res = await fetch(apiUrl("/telegram/link"), {
+        method: "DELETE",
+        headers: apiHeaders(token),
+      });
 
       if (!res.ok) {
         const data = await res.json();

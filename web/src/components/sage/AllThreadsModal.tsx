@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { MessageSquare, Search, X } from "lucide-react";
+import { MessageSquare, Search, X, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatThread } from "@/hooks/useChatThreads";
 
 interface Props {
   threads: ChatThread[];
   onSelectThread: (id: string) => void;
+  onDeleteThread?: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -21,8 +22,10 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function AllThreadsModal({ threads, onSelectThread, onClose }: Props) {
+export function AllThreadsModal({ threads, onSelectThread, onDeleteThread, onClose }: Props) {
   const [query, setQuery] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -31,12 +34,17 @@ export function AllThreadsModal({ threads, onSelectThread, onClose }: Props) {
     setTimeout(() => inputRef.current?.focus(), 60);
   }, []);
 
-  // close on Escape
+  // close on Escape (or cancel confirming)
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (confirmingId) { setConfirmingId(null); return; }
+        onClose();
+      }
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, confirmingId]);
 
   // lock body scroll
   useEffect(() => {
@@ -111,32 +119,96 @@ export function AllThreadsModal({ threads, onSelectThread, onClose }: Props) {
             </div>
           ) : (
             <div className="flex flex-col gap-0.5">
-              {filtered.map((thread, idx) => (
-                <button
-                  key={thread.id}
-                  onClick={() => { onSelectThread(thread.id); onClose(); }}
-                  className={cn(
-                    "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-left hover:bg-muted/60 transition-colors group",
-                  )}
-                >
-                  <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-primary/70 transition-colors" />
+              {filtered.map((thread, idx) => {
+                const isConfirming = confirmingId === thread.id;
+                const isDeleting  = deletingId   === thread.id;
+
+                const handleDeleteClick = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  setConfirmingId(thread.id);
+                };
+
+                const handleCancelDelete = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  setConfirmingId(null);
+                };
+
+                const handleConfirmDelete = async (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (!onDeleteThread) return;
+                  setDeletingId(thread.id);
+                  setConfirmingId(null);
+                  await onDeleteThread(thread.id);
+                  setDeletingId(null);
+                };
+
+                return (
+                  <div
+                    key={thread.id}
+                    className={cn(
+                      "flex items-center gap-2 w-full px-3 py-2.5 rounded-xl hover:bg-muted/60 transition-colors group",
+                      isDeleting && "opacity-40 pointer-events-none",
+                    )}
+                  >
+                    {/* Clickable row area */}
+                    <button
+                      onClick={() => { if (!isConfirming) { onSelectThread(thread.id); onClose(); } }}
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
+                        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-primary/70 transition-colors" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block text-sm text-foreground/80 group-hover:text-foreground truncate">
+                          {thread.title}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Right side: meta + delete */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!isConfirming && (
+                        <>
+                          <span className="text-[10px] text-muted-foreground/50 font-medium tabular-nums">
+                            #{idx + 1}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground/50 mr-1">
+                            {timeAgo(thread.updated_at)}
+                          </span>
+                        </>
+                      )}
+
+                      {onDeleteThread && !isConfirming && (
+                        <button
+                          onClick={handleDeleteClick}
+                          title="Delete chat"
+                          className="p-1 rounded-lg text-muted-foreground/0 group-hover:text-muted-foreground/50 hover:!text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+
+                      {isConfirming && (
+                        <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-right-2 duration-150">
+                          <span className="text-[11px] text-muted-foreground/70 whitespace-nowrap">Delete?</span>
+                          <button
+                            onClick={handleConfirmDelete}
+                            className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={handleCancelDelete}
+                            className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                          >
+                            No
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="block text-sm text-foreground/80 group-hover:text-foreground truncate">
-                      {thread.title}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] text-muted-foreground/50 font-medium tabular-nums">
-                      #{idx + 1}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground/50">
-                      {timeAgo(thread.updated_at)}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
